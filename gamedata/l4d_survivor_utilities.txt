@@ -1,0 +1,107 @@
+"Games"
+{
+	"#default"
+	{
+		"Functions"
+		{
+			"CTerrorPlayer::StartHealing"
+			{
+				"signature"		"CTerrorPlayer::StartHealing"
+				"callconv"		"thiscall"
+				"return"		"int"
+				"this"			"entity"
+				"arguments"
+				{
+					"a1"
+					{
+						"type"	"cbaseentity"
+					}
+				}
+			}
+			"CBaseBackpackItem::StartAction"
+			{
+				"signature"		"CBaseBackpackItem::StartAction"
+				"callconv"		"thiscall"
+				"return"		"int"
+				"this"			"entity"
+				"arguments"
+				{
+					"a1"
+					{
+						"type"	"int"
+					}
+				}
+			}
+			"CTerrorPlayer::StartReviving"
+			{
+				"signature"		"CTerrorPlayer::StartReviving"
+				"callconv"		"thiscall"
+				"return"		"int"
+				"this"			"entity"
+				"arguments"
+				{
+					"target"	// client being saved
+					{
+						"type"	"cbaseentity"
+					}
+				}
+			}
+		}
+	}
+	"left4dead2"
+	{
+		"Signatures"
+		{
+			/*
+			 *  CBaseBackpackItem::StartAction(CBaseBackpackItem::BackpackItemActionType,CBaseBackpackItem::BackpackItemActionTrigger)
+			 */
+			"CBaseBackpackItem::StartAction"
+			{
+				"library"	"server"
+				"linux"		"@_ZN17CBaseBackpackItem11StartActionENS_22BackpackItemActionTypeENS_25BackpackItemActionTriggerE"
+				"windows"	"\x2A\x2A\x2A\x2A\x2A\x2A\x8B\x2A\xE8\x2A\x2A\x2A\x2A\x8B\x2A\x85\x2A\x75\x2A\x5F\x32\x2A\x5E\x8B"
+				/*  ? ? ? ? ? ? 8B ? E8 ? ? ? ? 8B ? 85 ? 75 ? 5F 32 ? 5E 8B  */
+				/* https://github.com/Psykotikism/L4D1-2_Signatures/blob/main/l4d2/gamedata/l4d2_signatures.txt#L211 */
+			}
+			/*
+			 *	CTerrorPlayer::StartReviving(CTerrorPlayer *)
+			 */
+			"CTerrorPlayer::StartReviving"
+			{
+				"library"	"server"
+				"linux"		"@_ZN13CTerrorPlayer13StartRevivingEPS_"
+				"windows"	"\x55\x8B\x2A\x81\xEC\x14\x2A\x2A\x2A\xA1\xD8\x2A\x2A\x2A\x33\x2A\x89\x2A\x2A\x53\x8B\x2A\x2A\x8B\x83"
+				/* 55 8B ? 81 EC 14 ? ? ? A1 D8 ? ? ? 33 ? 89 ? ? 53 8B ? ? 8B 83 */
+				/* Search: aSStartsRevivin */
+			}
+		}
+	}
+	"left4dead"
+	{
+		"Signatures"
+		{
+			/*
+			 *	CTerrorPlayer::StartHealing(CTerrorPlayer*)
+			 */
+			"CTerrorPlayer::StartHealing"
+			{
+				"library"	"server"
+				"linux"		"@_ZN13CTerrorPlayer12StartHealingEPS_"
+				"windows"	"\x83\x2A\x2A\x55\x8B\x2A\x2A\x2A\x85\x2A\x56\x8B\x2A\x0F"
+				/* 83 ? ? 55 8B ? ? ? 85 ? 56 8B ? 0F */
+				/* Search: aHealingFriend or aHealingSelf */
+			}
+			/*
+			 *  CTerrorPlayer::StartReviving(CTerrorPlayer *)
+			 */
+			"CTerrorPlayer::StartReviving"
+			{
+				"library"	"server"
+				"linux"		"@_ZN13CTerrorPlayer13StartRevivingEPS_"
+				"windows"	"\x81\xEC\x2A\x2A\x2A\x2A\x53\x8B\x9C\x2A\x2A\x2A\x2A\x2A\x8B\x83\x2A\x2A\x2A\x2A\x83"
+				/* 81 EC ? ? ? ? 53 8B 9C ? ? ? ? ? 8B 83 ? ? ? ? 83 */
+				/* Search: aSStartsRevivin */
+			}
+		}
+	}
+}
