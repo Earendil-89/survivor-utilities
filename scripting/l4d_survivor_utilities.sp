@@ -33,16 +33,19 @@
  *      using natives and GlobalForwards.                                           *
  * ================================================================================ *
  */
+ 
 #pragma semicolon 1
 #pragma newdecls required
 
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
+#include <dhooks>
 #include <left4dhooks>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION "1.1.2"
+#define PLUGIN_VERSION "1.2"
+#define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
 #define SND_BLEED2		"player/survivor/splat/blood_spurt2.wav"
@@ -50,6 +53,64 @@
 #define SND_CHOKE		"player/survivor/voice/choke_5.wav"
 #define SND_FREEZE		"physics/glass/glass_impact_bullet4.wav"
 #define EXHAUST_TOKEN	150
+
+enum
+{
+	STATUS_INCAP,
+	STATUS_NORMAL,
+	STATUS_LIMP,
+	STATUS_CRITICAL
+};
+
+static char g_sWeaponRecoils[][] = {	"shotgun",	"hunting",	"sniper",	"smg",	"magnum",	"pistol",	"ak47",	"desert",	"m60",	"rifle" };
+static float g_fWeaponRecoils[]= {	18.5, 		14.5, 		14.5,		3.0,	7.5,		2.5,		4.2,	3.2,		4.5,	4.0 };
+
+// Player Speeds
+float g_fRunSpeed[MAXPLAYERS+1];		// Normal player speed (default = 220.0)
+float g_fWaterSpeed[MAXPLAYERS+1];		// Player speed on water (default = 115.0)
+float g_fLimpSpeed[MAXPLAYERS+1];		// Player speed while limping (default = 150.0)
+float g_fCritSpeed[MAXPLAYERS+1];		// Player speed when 1 HP after 1 incapacitation (default = 85.0)
+float g_fWalkSpeed[MAXPLAYERS+1];		// Player speed while walking (default = 85.0)
+float g_fCrouchSpeed[MAXPLAYERS+1];		// Player speed while crouching (default = 75.0)
+float g_fExhaustSpeed[MAXPLAYERS+1];	// Player speed while exhaust
+// Player conditions
+bool g_bIsFrozen[MAXPLAYERS+1];			// Store if player is frozen
+int g_iExhaustToken[MAXPLAYERS+1];		// Player exhaust tokens
+int g_iToxicToken[MAXPLAYERS+1];		// Player intoxication tokens
+int g_iBleedToken[MAXPLAYERS+1];		// Player bleeding tokens
+float g_fFreezeTime[MAXPLAYERS+1];		// Player frozen lifetime (this value is needed to stack times)
+float g_fRecoilStack[MAXPLAYERS+1];		// Stacked recoil
+float g_fSaveFreeze[MAXPLAYERS+1];		// Save freeze time if player goes idle to try to skip it!
+// Timer Handles
+Handle g_hToxicTimer[MAXPLAYERS+1]; 	// Timer that causes damage and toxic effect to intoxicated clients
+Handle g_hBleedTimer[MAXPLAYERS+1];		// Timer that causes damage and bleed effect to bleeding clients
+Handle g_hFreezeTimer[MAXPLAYERS+1];	// Timer that resumes player movement and removes freeze effect
+Handle g_hExhaustTimer[MAXPLAYERS+1];	// Timer that removes exhaust effect
+Handle g_hRecoilTimer[MAXPLAYERS+1];	// Timer that removes stacked recoils on exhausted players
+
+ConVar	g_hRunSpeed, g_hWaterSpeed, g_hLimpSpeed, g_hCritSpeed, g_hWalkSpeed, g_hCrouchSpeed, g_hExhaustSpeed, g_hTempDecay,
+		g_hToxicDmg, g_hToxicDelay, g_hBleedDmg, g_hBleedDelay, g_hLimpHealth, g_hFreezeOverride,
+		g_hToxicOverride, g_hBleedOverride, g_hExhaustOverride, g_hHealDuration, g_hReviveDuration,
+		g_hDefibDuration, g_hPacksDuration, g_hAdrenSpeed;
+
+GlobalForward	ForwardFreeze, ForwardBleed, ForwardToxic, ForwardExhaust, ForwardFreezeEnd, ForwardBleedEnd, ForwardToxicEnd, ForwardExhaustEnd,
+				ForwardKit, ForwardDefib, ForwardPack, ForwardRevive, ForwardHeal;
+
+bool g_bL4D2;
+
+// Float that stores convar values to check if surivvor is limping, since they are being requested
+// multiple times I store the values instead of requesting them continously
+float g_fTempDecay;
+float g_fLimpHealth;
+// Temporary stores original ConVar when is modified to change per-player heal and revive speeds
+float g_fHealDuration = -1.0;
+float g_fDefibDuration = -1.0;
+float g_fReviveDuration = -1.0;
+float g_fPacksDuration = -1.0;
+		
+int g_iPostProcess;		// env_postprocess entity reference
+int g_iFogVolume;		// env_fog entity reference
+bool g_iEntMustDie;		// Requested by SetTransmit to know if postprocess and fog_volume must be killed
 
 public Plugin myinfo =
 {
@@ -60,52 +121,12 @@ public Plugin myinfo =
 	url = "https://forums.alliedmods.net/showthread.php?t=335683",
 };
 
-enum
-{
-	STATUS_INCAP,
-	STATUS_NORMAL,
-	STATUS_LIMP,
-	STATUS_CRITICAL
-};
-
-// Player Speeds
-float g_fRunSpeed[MAXPLAYERS+1];		// Normal player speed (default = 220.0)
-float g_fWaterSpeed[MAXPLAYERS+1];		// Player speed on water (default = 115.0)
-float g_fLimpSpeed[MAXPLAYERS+1];		// Player speed while limping (default = 150.0)
-float g_fCritSpeed[MAXPLAYERS+1];		// Player speed when 1 HP after 1 incapacitation (default = 85.0)
-float g_fWalkSpeed[MAXPLAYERS+1];		// Player speed while walking (default = 85.0)
-float g_fCrouchSpeed[MAXPLAYERS+1];		// Player speed while crouching (default = 75.0)
-float g_fExhaustSpeed[MAXPLAYERS+1];	// Player speed while exhaust
-
-// Player conditions
-bool g_bIsFrozen[MAXPLAYERS+1];			// Store if player is frozen
-int g_iExhaustToken[MAXPLAYERS+1];		// Player exhaust tokens
-int g_iToxicToken[MAXPLAYERS+1];		// Player intoxication tokens
-int g_iBleedToken[MAXPLAYERS+1];		// Player bleeding tokens
-float g_fFreezeTime[MAXPLAYERS+1];		// Player frozen lifetime (this value is needed to stack times)
-float g_fRecoilStack[MAXPLAYERS+1];		// Stacked recoil
-float g_fSaveFreeze[MAXPLAYERS+1];		// Save freeze time if player goes idle to try to skip it!
-
-ConVar	g_hRunSpeed, g_hWaterSpeed, g_hLimpSpeed, g_hCritSpeed, g_hWalkSpeed, g_hCrouchSpeed, g_hExhaustSpeed, g_hTempDecay,
-		g_hToxicDmg, g_hToxicDelay, g_hBleedDmg, g_hBleedDelay, g_hLimpHealth, g_hFreezeOverride,
-		g_hToxicOverride, g_hBleedOverride, g_hExhaustOverride;
-		
-float g_fTempDecay, g_fLimpHealth;
-		
-// Timer Handles
-Handle g_hToxicTimer[MAXPLAYERS+1], g_hBleedTimer[MAXPLAYERS+1], g_hFreezeTimer[MAXPLAYERS+1], g_hExhaustTimer[MAXPLAYERS+1], g_hRecoilTimer[MAXPLAYERS+1];
-
-GlobalForward ForwardFreeze, ForwardBleed, ForwardToxic, ForwardExhaust, ForwardFreezeEnd, ForwardBleedEnd, ForwardToxicEnd, ForwardExhaustEnd;
-
-int g_iPostProcess, g_iFogVolume, g_iEntMustDie;		// Postprocess and fog related
-
-// Instead of making a list with all weapons, use keywords to find the weapon
-static char g_sWeaponRecoils[][] = {	"shotgun",	"hunting",	"sniper",	"smg",	"magnum",	"pistol",	"ak47",	"desert",	"m60",	"rifle" };
-static float g_fWeaponRecoils[]= {	18.5, 		14.5, 		14.5,		3.0,	7.5,		2.5,		4.2,	3.2,		4.5,	4.0 };
-
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
-	if( GetEngineVersion() != Engine_Left4Dead2 && GetEngineVersion() != Engine_Left4Dead )
+	if( GetEngineVersion() == Engine_Left4Dead2 )
+		g_bL4D2 = true;
+
+	else if( GetEngineVersion() != Engine_Left4Dead )
 	{
 		strcopy(error, err_max, "Plugin only supports Left 4 Dead 1 & 2");
 		return APLRes_SilentFailure;
@@ -129,18 +150,24 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SU_IsExhausted",		Native_GetExhaust);
 
 	// Forwards when survivor conditions are being set (can be modified)
-	ForwardFreeze =		new GlobalForward("SU_OnFreeze",		ET_Event, Param_Cell, Param_FloatByRef);
-	ForwardBleed =		new GlobalForward("SU_OnBleed",			ET_Event, Param_Cell, Param_CellByRef);
-	ForwardToxic =		new GlobalForward("SU_OnToxic",			ET_Event, Param_Cell, Param_CellByRef);
-	ForwardExhaust =	new GlobalForward("SU_OnExhaust",		ET_Event, Param_Cell, Param_CellByRef);
+	ForwardFreeze =		new GlobalForward("SU_OnFreeze",			ET_Event, Param_Cell, Param_FloatByRef);
+	ForwardBleed =		new GlobalForward("SU_OnBleed",				ET_Event, Param_Cell, Param_CellByRef);
+	ForwardToxic =		new GlobalForward("SU_OnToxic",				ET_Event, Param_Cell, Param_CellByRef);
+	ForwardExhaust =	new GlobalForward("SU_OnExhaust",			ET_Event, Param_Cell, Param_CellByRef);
 	// Forwards when survivor conditions end (can't be modified)
-	ForwardFreezeEnd =	new GlobalForward("SU_OnFreezeEnd",		ET_Ignore, Param_Cell);
-	ForwardBleedEnd	=	new GlobalForward("SU_OnBleedEnd",		ET_Ignore, Param_Cell);
-	ForwardToxicEnd =	new GlobalForward("SU_OnToxicEnd",		ET_Ignore, Param_Cell);
-	ForwardExhaustEnd =	new GlobalForward("SU_OnExhaustEnd",	ET_Ignore, Param_Cell);
-		
+	ForwardFreezeEnd =	new GlobalForward("SU_OnFreezeEnd",			ET_Ignore, Param_Cell);
+	ForwardBleedEnd	=	new GlobalForward("SU_OnBleedEnd",			ET_Ignore, Param_Cell);
+	ForwardToxicEnd =	new GlobalForward("SU_OnToxicEnd",			ET_Ignore, Param_Cell);
+	ForwardExhaustEnd =	new GlobalForward("SU_OnExhaustEnd",		ET_Ignore, Param_Cell);
+	// Forwards for reviving/backpack actions
+	ForwardKit =		new GlobalForward("SU_OnMedkitUse",			ET_Event, Param_Cell, Param_FloatByRef, Param_Cell);
+	ForwardDefib =		new GlobalForward("SU_OnDefibUse",			ET_Event, Param_Cell, Param_FloatByRef);
+	ForwardPack =		new GlobalForward("SU_OnUpgradePackUse",	ET_Event, Param_Cell, Param_FloatByRef);
+	ForwardRevive =		new GlobalForward("SU_OnRevive",			ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
+	ForwardHeal =		new GlobalForward("SU_OnHeal",				ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
+
 	RegPluginLibrary("survivorutilities");
-	
+
 	return APLRes_Success;
 }
 
@@ -148,7 +175,7 @@ public void OnPluginStart()
 {	
 	CreateConVar("survivor_utilities_version", PLUGIN_VERSION,	"L4D Survivor Utilities Version", 	FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	// Speed ConVars , the default values are the game original values
-	g_hRunSpeed =			CreateConVar("sm_su_run_speed",			"220.0", 	"Default survivor run speed.",							FCVAR_NOTIFY, true, 110.0);	// When survivor should be running, dont go below 110.0 or players will see weird movements
+	g_hRunSpeed =			CreateConVar("sm_su_run_speed",			"220.0", 	"Default survivor run speed.",							FCVAR_NOTIFY, true, 110.0);	// When survivor should be running, dont go below 110.0 or players will feel weird movements
 	g_hWaterSpeed =			CreateConVar("sm_su_water_speed",		"115.0",	"Survivor speed while in water.",						FCVAR_NOTIFY, true, 80.0);
 	g_hLimpSpeed =			CreateConVar("sm_su_limp_speed",		"150.0",	"Survivor limping speed (HP below 40).",				FCVAR_NOTIFY, true, 65.0);	// Under 65 player speed is not linear and falls rapidly to 0 around 50 speed value
 	g_hCritSpeed =			CreateConVar("sm_su_critical_speed",	"85.0",		"Survivor speed when 1 HP afer one incapacitation.",	FCVAR_NOTIFY, true, 65.0);
@@ -165,11 +192,20 @@ public void OnPluginStart()
 	g_hBleedOverride =		CreateConVar("sm_su_bleed_override",	"2",		"What should plugin do with bleed amount if a player is bleeding again?\n0 = Don't override amount.\n1 = Override if new amount is higher. \n2 = Add new amount to the original one.\n3 = Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	// Freeze ConVars
 	g_hFreezeOverride =		CreateConVar("sm_su_freeze_override",	"2",		"What should plugin do with freeze time if a player is frozen again?\n0 = Don't change original freeze time.\n1 = Change original freeze time if new time is higher.\n2 = Add the new freeze time to the original time.\n3 = Override original time.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
-	g_hExhaustOverride =	CreateConVar("sm_su_exhaust_override",	"2",		"What should plugin do with exhaust amount if a player is exhausted again=\n0 = Don't override amount.\n1 = Override if new amount is higher.\n2 = Add new amount to the original one.\n3 Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	//Exhaust ConVars
+	g_hExhaustOverride =	CreateConVar("sm_su_exhaust_override",	"2",		"What should plugin do with exhaust amount if a player is exhausted again=\n0 = Don't override amount.\n1 = Override if new amount is higher.\n2 = Add new amount to the original one.\n3 Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	
 	// Get server ConVars
 	g_hTempDecay =	 	FindConVar("pain_pills_decay_rate");
 	g_hLimpHealth =		FindConVar("survivor_limp_health");
+	g_hHealDuration = 	FindConVar("first_aid_kit_use_duration");
+	g_hReviveDuration =	FindConVar("survivor_revive_duration");
+	if( g_bL4D2 )
+	{
+		g_hDefibDuration =	FindConVar("defibrillator_use_duration");
+		g_hPacksDuration =	FindConVar("upgrade_pack_use_duration");
+		g_hAdrenSpeed =		FindConVar("adrenaline_revive_speedup");
+	}
 
 	g_hRunSpeed.AddChangeHook(CVarChange_Speeds);
 	g_hWaterSpeed.AddChangeHook(CVarChange_Speeds);
@@ -182,15 +218,41 @@ public void OnPluginStart()
 	g_hLimpHealth.AddChangeHook(CVarChange_Game);
 		
 	HookEvent("pills_used",				Event_Pills_Used);
-	HookEvent("adrenaline_used",		Event_Adren_Used);
 	HookEvent("heal_success",			Event_Heal);
 	HookEvent("player_death",			Event_Player_Death);
 	HookEvent("round_start",			Event_Round_Start, EventHookMode_PostNoCopy);
 	HookEvent("weapon_fire",			Event_Weapon_Fire);
 	HookEvent("player_bot_replace",		Event_Player_Replaced); // Bot replaced a player
 	HookEvent("bot_player_replace",		Event_Bot_Replaced);	// Player gets back the control of the character
+	if( g_bL4D2 )
+		HookEvent("adrenaline_used",		Event_Adren_Used);
 	
 	AutoExecConfig(true, "l4d_survivor_utilities");
+	
+	// ====================
+	// DETOURS
+	// ====================
+	char sPath[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, sPath, sizeof(sPath), "gamedata/%s.txt", GAMEDATA);
+	if( FileExists(sPath) == false ) SetFailState("\n==========\nMissing required file: \"%s\".\nRead installation instructions again.\n==========", sPath);
+
+	Handle hGameData = LoadGameConfigFile(GAMEDATA);
+	if( hGameData == null ) SetFailState("Failed to load \"%s.txt\" gamedata.", GAMEDATA);
+
+	if( g_bL4D2 )
+	{
+		CreateDetour(hGameData, BackPackUse,			"CBaseBackpackItem::StartAction",	false);
+		CreateDetour(hGameData, BackPackUse_Post,		"CBaseBackpackItem::StartAction",	true);
+	}
+	else
+	{
+		CreateDetour(hGameData, StartHealing,			"CTerrorPlayer::StartHealing",		false);
+		CreateDetour(hGameData, StartHealing_Post,		"CTerrorPlayer::StartHealing",		true);
+	}
+	CreateDetour(hGameData, OnRevive,					"CTerrorPlayer::StartReviving",		false);
+	CreateDetour(hGameData, OnRevive_Post,				"CTerrorPlayer::StartReviving",		true);
+
+	delete hGameData;
 }
 
 public void OnMapStart()
@@ -336,7 +398,7 @@ public Action Event_Weapon_Fire(Event event, const char[] name, bool dontBroadca
 			if( StrContains(sBuffer, g_sWeaponRecoils[i], false) != -1 )
 			{
 				g_fRecoilStack[client] -= g_fWeaponRecoils[i]; // Increase the stacked recoil
-				break; // Stop loop because string is readed in a way it could find another match with some weapon, so first match is always the desired weapon
+				break; // Stop loop because string is readed in a way it could find another match with some weapon, so first match is always the desired weapon	
 			}
 		}
 		if( g_fRecoilStack[client] == 0 )
@@ -383,6 +445,140 @@ public Action Event_Bot_Replaced(Event event, const char[] name, bool dontBroadc
 	if( SU_IsExhausted(client) )	g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
 	
 	g_fSaveFreeze[client] = 0.0;
+}
+
+//==========================================================================================
+//										Detours
+//==========================================================================================
+void CreateDetour(Handle gameData, DHookCallback CallBack, const char[] sName, const bool post)
+{
+	Handle hDetour = DHookCreateFromConf(gameData, sName);
+	if( !hDetour )
+		SetFailState("Failed to find \"%s\" signature.", sName);
+		
+	if( !DHookEnableDetour(hDetour, post, CallBack) )
+		SetFailState("Failed to detour \"%s\".", sName);
+		
+	delete hDetour;
+}
+
+public MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
+{
+	// Player reviving <- pTHis
+	int client = DHookGetParam(hParams, 1); // Player revived
+	int adren;
+	float duration;
+	if( g_bL4D2 )
+	{
+		adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
+		duration = adren == 0 ? g_hHealDuration.FloatValue : g_hHealDuration.FloatValue * g_hAdrenSpeed.FloatValue;
+	}
+	else duration = g_hHealDuration.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardRevive);
+	Call_PushCell(pThis);
+	Call_PushCell(client);
+	Call_PushFloatRef(duration);
+	Call_Finish(aResult);
+	
+	if( aResult == Plugin_Handled )
+	{
+		DHookSetReturn(hReturn, 0);
+		return MRES_Supercede;
+	}
+	else if( aResult == Plugin_Changed)
+	{
+		g_fReviveDuration = g_hReviveDuration.FloatValue;
+		g_hReviveDuration.SetFloat(duration, true, false);
+	}
+
+	return MRES_Ignored;
+}
+
+public MRESReturn OnRevive_Post(int pThis, Handle hReturn, Handle hParams)
+{
+	if( g_fReviveDuration >= 0.0 )
+	{
+		g_hReviveDuration.SetFloat(g_fReviveDuration, true, false);
+		g_fReviveDuration = -1.0;
+	}
+	
+	return MRES_Ignored;
+}
+
+// pThis -> backpack item
+public MRESReturn BackPackUse(int pThis, Handle hReturn, Handle hParams)
+{
+	static char sItemName[32];
+	GetEntityClassname(pThis, sItemName, sizeof(sItemName));
+	
+	int client = GetEntPropEnt(pThis, Prop_Data, "m_hOwnerEntity");
+	
+	if( StrContains(sItemName, "first", false) )
+	{
+		if( !CallForwardKit(client, DHookGetParam(hParams, 1)) )
+		{
+			DHookSetReturn(hReturn, 0);
+			return MRES_Supercede;
+		}
+	}	
+	else if( StrContains(sItemName, "defib", false) )
+	{
+		if( !CallForwardDefib(client) )
+		{
+			DHookSetReturn(hReturn, 0);
+			return MRES_Supercede;
+		}
+	}
+	else if( !CallForwardPack(client) )
+	{
+		DHookSetReturn(hReturn, 0);
+		return MRES_Supercede;
+	}
+
+	return MRES_Ignored;
+}
+
+public MRESReturn BackPackUse_Post(int pThis, Handle hReturn, Handle hParams)
+{
+	if( g_fHealDuration >= 0.0 )
+	{
+		g_hHealDuration.SetFloat(g_fHealDuration, true, false);
+		g_fHealDuration = -1.0;
+	}
+	if( g_fDefibDuration >= 0.0 )
+	{
+		g_hDefibDuration.SetFloat(g_fDefibDuration, true, false);
+		g_fDefibDuration = -1.0;
+	}
+	if( g_fPacksDuration >= 0.0 )
+	{
+		g_hPacksDuration.SetFloat(g_fPacksDuration, true, false);
+		g_fPacksDuration = -1.0;
+	}
+	return MRES_Ignored;
+}
+// pThis -> client
+public MRESReturn StartHealing(int pThis, Handle hReturn, Handle hParams)
+{
+	int target = DHookGetParam(hParams, 1);
+	if( !CallForwardHeal(pThis, target) )
+		return MRES_Supercede;
+	
+	return MRES_Ignored;
+}
+
+public MRESReturn StartHealing_Post(int pThis, Handle hReturn)
+{
+
+	if( g_fHealDuration >= 0.0 )
+	{
+		g_hHealDuration.SetFloat(g_fHealDuration, true, false);
+		g_fHealDuration = -1.0;
+	}
+	
+	return MRES_Ignored;
 }
 //==========================================================================================
 //									DHooks & SDKHooks
@@ -434,9 +630,9 @@ public Action L4D_OnGetCrouchTopSpeed(int client, float &retVal)
 public Action PostProcess_STransmit(int entity, int client)
 {
 	// Kill entity on SetTransmit and wait a frame to respawn if needed (this prevents bugs)
-	if( g_iEntMustDie == 1)
+	if( g_iEntMustDie )
 	{
-		g_iEntMustDie = 0;
+		g_iEntMustDie = false;
 		KillPostProcess();
 		RequestFrame(Exhaust_PostCheck);
 		return Plugin_Continue;
@@ -700,7 +896,7 @@ public Action Exhaust_Timer(Handle timer, int client)
 	if( !IsValidAliveSurvivor(client) )
 	{
 		g_iExhaustToken[client] = 0;
-		g_iEntMustDie = 1;
+		g_iEntMustDie = true;
 		return;
 	}
 
@@ -870,7 +1066,7 @@ bool IsValidEntRef(int entity)
 }
 
 //==========================================================================================
-//									Natives
+//									Natives & Forwards
 //==========================================================================================
 
 public int Native_AddFreeze(Handle plugin, int numParams)
@@ -1147,7 +1343,7 @@ public int Native_RemoveExhaust(Handle plugin, int numParams)
 	delete g_hExhaustTimer[client];
 
 	g_iExhaustToken[client] = 0;
-	g_iEntMustDie = 1;
+	g_iEntMustDie = true;
 	
 	Call_StartForward(ForwardExhaustEnd);
 	Call_PushCell(client);
@@ -1212,6 +1408,98 @@ public int Native_GetExhaust(Handle plugin, int numParams)
 	if( GetClientTeam(client) != 2 ) ThrowNativeError(SP_ERROR_PARAM, "SU_GetSpeed Error: Client %i is not survivor.", client);	
 		
 	return g_iExhaustToken[client] > 0 ? true : false;
+}
+
+bool CallForwardKit(int client, int param)
+{
+	bool friendHeal = param == 0 ? false : true;
+	int adren;
+	float fTime;
+	if( g_bL4D2 )
+	{
+		adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
+		fTime = adren == 0 ? g_hHealDuration.FloatValue : g_hHealDuration.FloatValue * g_hAdrenSpeed.FloatValue;
+	}
+	else fTime = g_hHealDuration.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardKit);
+	Call_PushCell(client);
+	Call_PushFloatRef(fTime);
+	Call_PushCell(friendHeal);
+	Call_Finish(aResult);
+	
+	if( aResult == Plugin_Changed )
+	{
+		g_fHealDuration = g_hHealDuration.FloatValue;	// Save the convar temporary
+		g_hHealDuration.SetFloat(fTime, true, false);
+	}
+	else if( aResult == Plugin_Handled) return false;
+	
+	return true;
+}
+
+bool CallForwardDefib(int client)
+{
+	int adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
+	float duration = adren == 0 ? g_hDefibDuration.FloatValue : g_hDefibDuration.FloatValue * g_hAdrenSpeed.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardDefib);
+	Call_PushCell(client);
+	Call_PushFloatRef(duration);
+	Call_Finish(aResult);
+	
+	if( aResult == Plugin_Changed )
+	{
+		g_fDefibDuration = g_hDefibDuration.FloatValue;	// Save the convar temporary
+		g_hHealDuration.SetFloat(duration, true, false);
+	}
+	else if( aResult == Plugin_Handled) return false;
+	
+	return true;
+}
+
+bool CallForwardPack(int client)
+{
+	int adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
+	float duration = adren == 0 ? g_hPacksDuration.FloatValue : g_hPacksDuration.FloatValue * g_hAdrenSpeed.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardPack);
+	Call_PushCell(client);
+	Call_PushFloatRef(duration);
+	Call_Finish(aResult);
+	
+	if( aResult == Plugin_Changed )
+	{
+		g_fPacksDuration = g_hPacksDuration.FloatValue;
+		g_hPacksDuration.SetFloat(duration, true, false);
+	}
+	else if( aResult == Plugin_Handled ) return false;
+	
+	return true;
+}
+
+bool CallForwardHeal(int client, int target)
+{
+	float duration = g_hHealDuration.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardHeal);
+	Call_PushCell(client);
+	Call_PushCell(target);
+	Call_PushCellRef(duration);
+	Call_Finish(aResult);
+	
+	if( aResult == Plugin_Changed )
+	{
+		g_fHealDuration = g_hHealDuration.FloatValue;
+		g_hHealDuration.SetFloat(duration, true, false);
+	}
+	else if( aResult == Plugin_Handled ) return false;
+	
+	return true;
 }
 
 /*============================================================================================
