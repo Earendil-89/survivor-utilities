@@ -33,8 +33,7 @@
  *      using natives and GlobalForwards.                                           *
  * ================================================================================ *
  */
- 
- 
+
 #pragma semicolon 1
 #pragma newdecls required
 
@@ -64,7 +63,7 @@ enum
 };
 
 static char g_sWeaponRecoils[][] = {	"shotgun",	"hunting",	"sniper",	"smg",	"magnum",	"pistol",	"ak47",	"desert",	"m60",	"rifle" };
-static float g_fWeaponRecoils[]= {	18.5, 		14.5, 		14.5,		3.0,	7.5,		2.5,		4.2,	3.2,		4.5,	4.0 };
+static float g_fWeaponRecoils[]= {		18.5, 		14.5, 		14.5,		3.0,	7.5,		2.5,		4.2,	3.2,		4.5,	4.0 };
 
 // Player Speeds
 float g_fRunSpeed[MAXPLAYERS+1];		// Normal player speed (default = 220.0)
@@ -228,9 +227,7 @@ public void OnPluginStart()
 	
 	AutoExecConfig(true, "l4d_survivor_utilities");
 	
-	// ====================
-	// DETOURS
-	// ====================
+	// Detours
 	char sPath[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, sPath, sizeof(sPath), "gamedata/%s.txt", GAMEDATA);
 	if( FileExists(sPath) == false ) SetFailState("\n==========\nMissing required file: \"%s\".\nRead installation instructions again.\n==========", sPath);
@@ -241,9 +238,7 @@ public void OnPluginStart()
 	if( g_bL4D2 )
 	{
 		CreateDetour(hGameData, MedStartAct,			"CFirstAidKit::ShouldStartAction",	false);
-//		CreateDetour(hGameData, MedStartAct_Post,		"CFirstAidKit::ShouldStartAction",	true);
 		CreateDetour(hGameData, DefStartAct,			"CItemDefibrillator::ShouldStartAction", false);
-//		CreateDetour(hGameData, DefStartAct_Post,		"CItemDefibrillator::ShouldStartAction", true);
 	}
 	else
 	{
@@ -261,18 +256,6 @@ public void OnMapStart()
 	SoundPrecache();
 	for( int i = 0; i <= MaxClients; i++ )
 		SetClientData(i, true);
-}
-
-public void OnMapEnd()
-{
-	for( int i = 0; i < MaxClients; i++ )
-	{
-		delete g_hToxicTimer[i];
-		delete g_hBleedTimer[i];
-		delete g_hFreezeTimer[i];
-		delete g_hExhaustTimer[i];
-		delete g_hRecoilTimer[i];
-	}
 }
 
 public void OnClientPutInServer(int client)
@@ -305,6 +288,18 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 		SetEntProp(client, Prop_Send, "m_iShovePenalty", 8);	// 8 seems to be the max fatigue that survivors can have
 	
 	return Plugin_Continue;
+}
+
+public void OnMapEnd()
+{
+	for( int i = 0; i < MaxClients; i++ )
+	{
+		delete g_hToxicTimer[i];
+		delete g_hBleedTimer[i];
+		delete g_hFreezeTimer[i];
+		delete g_hExhaustTimer[i];
+		delete g_hRecoilTimer[i];
+	}
 }
 
 //==========================================================================================
@@ -1453,16 +1448,15 @@ public int Native_GetExhaust(Handle plugin, int numParams)
 	return g_iExhaustToken[client] > 0 ? true : false;
 }
 
-
-
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
 * 1.2	(13-Jan-2022)
 		- Added detouring for game functions:
-			* Healing
-			* Reviving
-		- Detours allow to modify healing and revive duration, and block events.
+			* L4D2: backpack usage.
+			* L4D: Healing.
+			* L4D & L4D2: Reviving survivors.
+		- Detours allow to modify backpack usage, healing and revive duration, and block events.
 		- Minor optimizations.
 * 1.1.2 (09-Jan-2022)
 		- Blocked plugin error messages when a survivor joins infected team (thanks to Sev for pointing the error).
