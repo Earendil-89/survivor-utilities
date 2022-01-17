@@ -286,41 +286,17 @@ forward void SU_OnExhaustEnd(int client);
 ==========================================================================*/
 
 /**
- * @brief					Called when a survivor is using a medkit
- *
- * @param client			Survivor performing the heal
- * @param duration			Duration of the heal event
- * @param teamHealing		True if survivor is healing another one, false if is healing himself
- *
- * @remark					The detour that calls this forward doesn't pass the survivor being revived, to know who is being revived you may use a RayTrace to check the target aimed with the medkit
- * @remark					L4D2 ONLY
- *
- * @return					Plugin_Handled to block the healing, Plugin_Changed to override duration, Plugin Continue otherwise
- */
-forward Action SU_OnMedkitUse(int client, float& duration, const bool teamHealing);
-
-/**
  * @brief					Called when a survivor is using a defibrillator
  *
  * @param client			Survivor using the defibrillator
+ * @param targetModel		Death model entity being defibrillated
  * @param duration			Duration of the defib event
  * @remark					L4D2 ONLY
  *
  * @return					Plugin_Handled to block the defibrillation, Plugin_Changed to override duration, Plugin_Continue otherwise
  */
-forward Action SU_OnDefibUse(int client, float& duration);
+forward Action SU_OnDefib(int client, int targetModel, float& duration);
  
-/**
- * @brief					Called when a survivor starts deploying an upgradepack
- *
- * @param client			Survivor using the upgradepack
- * @param duration			Duration of the deploy
- * @remark					L4D2 ONLY
- *
- * @return					Plugin_Handled to block the deploy, Plugin_Changed to override duration, Plugin_Continue otherwise
- */
-forward Action SU_OnUpgradePackUse(int client, float& duration);
-
 /**
  * @brief					Called when a survivor revives another one
  *
@@ -334,12 +310,11 @@ forward Action SU_OnUpgradePackUse(int client, float& duration);
 forward Action SU_OnRevive(int client, int target, float& duration);
 
 /**
- * @brief					Called when a survivor uses a first aid kit
+ * @brief					Called when a survivor heals with a first aid kit
  *
- * @param client			Survivor using the medkit
- / @param target			Survivor being target
+ * @param client			Survivor performing heal
+ / @param target			Survivor being healed
  * @param duration			Duration of the healing
- * @remark					L4D ONLY
  *
  * @return					Plugin_Handled to block the healing, Plugin_Changed to override duration, Plugin_Continue otherwise
  */
