@@ -86,18 +86,8 @@ GlobalForward ForwardFreeze, ForwardBleed, ForwardToxic, ForwardExhaust, Forward
 int g_iPostProcess, g_iFogVolume, g_iEntMustDie;		// Postprocess and fog related
 
 // Instead of making a list with all weapons, use keywords to find the weapon
-static char g_sWeaponRecoils[20][] = {
-	"shotgun",	"18.5",
-	"hunting",	"14.5",
-	"sniper",	"14.5",
-	"smg",		"3.0",
-	"magnum",	"7.5",	// When looping if we reach magnum(before pistols), loop will stop
-	"pistol",	"2.5",
-	"ak47",		"4.2",
-	"desert",	"3.2",
-	"m60",		"4.5",
-	"rifle",	"4.0"	// Similar case as with magnum but with the "rifle_" family
-};
+static char g_sWeaponRecoils[][] = {	"shotgun",	"hunting",	"sniper",	"smg",	"magnum",	"pistol",	"ak47",	"desert",	"m60",	"rifle" };
+static float g_fWeaponRecoils[]= {	18.5, 		14.5, 		14.5,		3.0,	7.5,		2.5,		4.2,	3.2,		4.5,	4.0 };
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
@@ -327,13 +317,12 @@ public Action Event_Weapon_Fire(Event event, const char[] name, bool dontBroadca
 	{
 		char sBuffer[32];
 		event.GetString("weapon", sBuffer, sizeof(sBuffer));
-		for( int i = 0; i < sizeof(g_sWeaponRecoils); i += 2 )
+		for( int i = 0; i < sizeof(g_sWeaponRecoils); i ++ )
 		{
 			if( StrContains(sBuffer, g_sWeaponRecoils[i], false) != -1 )
 			{
-				g_fRecoilStack[client] -= StringToFloat(g_sWeaponRecoils[i+1]); // Increase the stacked recoil
+				g_fRecoilStack[client] -= g_fWeaponRecoils[i]; // Increase the stacked recoil
 				break; // Stop loop because string is readed in a way it could find another match with some weapon, so first match is always the desired weapon
-				
 			}
 		}
 		if( g_fRecoilStack[client] == 0 )
