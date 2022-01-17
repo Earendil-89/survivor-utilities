@@ -1,4 +1,5 @@
 # survivor-utilties
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 Sourcemod API for L4D/2 to get control in survivor speeds and add effects
 
     If you only install this plugin, you will have only access to survivor speed control via ConVar.
