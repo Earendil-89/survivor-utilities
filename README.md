@@ -21,6 +21,6 @@ Sourcemod API for L4D/2 to get control in survivor speeds and add effects
         Intoxication: Survivors will lose health over time due to an intoxication; it can be stopped if the survivor uses pain pills or adrenaline.
         Improved freeze: Survivor is unable to move, shoot, reload or shove, also a screen effect is displayed while the survivor is frozen.
         Exhaustion, while exhausted the survivor will lose movement speed, maxed shove penalty and increased recoil, a screen effect is displayed (thanks to Silvers for the fog_volume and postprocess code). Exhaust can be cancelled with adrenaline, also if the survivor doesn’t move will recover faster.
-
-Requirements:
+        
+    Requirements:
         Left 4 DHooks Direct
