@@ -207,7 +207,7 @@ native float SU_GetSpeed(int client, int speedType);
  *
  * @return					Plugin_Handled to block the exhaustion, Plugin_Continue otherwise
  */
-forward Action SU_OnExhaust(int client, int &amount);
+forward Action SU_OnExhaust(int client, int& amount);
 
 /**
  * @brief					Called whenever SU_AddFreeze is invoked.
@@ -217,7 +217,7 @@ forward Action SU_OnExhaust(int client, int &amount);
  * 
  * @return					Plugin_Handled to block the freeze, Plugin_Changed to override time value, Plugin_Continue otherwise.
  */
-forward Action SU_OnFreeze(int client, float &time);
+forward Action SU_OnFreeze(int client, float& time);
 
 /**
  * @brief					Called whenever SU_AddBleed is invoked.
@@ -227,7 +227,7 @@ forward Action SU_OnFreeze(int client, float &time);
  *
  * @return					Plugin_Handled to block the bleed, Plugin_Changed to override token amount, Plugin_Continue otherwise. 
  */
-forward Action SU_OnBleed(int client, int &amount);
+forward Action SU_OnBleed(int client, int& amount);
 
 /**
  * @brief					Called whenever SU_AddToxic is invoked.
@@ -237,7 +237,7 @@ forward Action SU_OnBleed(int client, int &amount);
  * 
  * @return					Plugin_Handled to block the intoxication, Plugin_Changed to override token amount, Plugin_Continue otherwise. 
  */
-forward Action SU_OnToxic(int client, int &amount);
+forward Action SU_OnToxic(int client, int& amount);
 
 /**
  * @brief					Called whenever SU_RemoveFreeze is invoked.
@@ -274,3 +274,48 @@ forward void SU_OnToxicEnd(int client);
  * @noreturn
  */
 forward void SU_OnExhaustEnd(int client);
+
+/*==========================================================================
+							Backpack use & revive								  
+----------------------------------------------------------------------------
+	- Caution when overriding duration, bots are not programmed to keep
+	healing over 10 seconds, so they will reset their action endlessly!
+	
+	- 9.75 should be a limit time, as plugin maker is your job to
+	ensure that if a bot is going to heal, don't set very high time.
+==========================================================================*/
+
+/**
+ * @brief					Called when a survivor is using a defibrillator
+ *
+ * @param client			Survivor using the defibrillator
+ * @param targetModel		Death model entity being defibrillated
+ * @param duration			Duration of the defib event
+ * @remark					L4D2 ONLY
+ *
+ * @return					Plugin_Handled to block the defibrillation, Plugin_Changed to override duration, Plugin_Continue otherwise
+ */
+forward Action SU_OnDefib(int client, int targetModel, float& duration);
+ 
+/**
+ * @brief					Called when a survivor revives another one
+ *
+ * @param client			Survivor reviving
+ / @param target			Survivor being revived
+ * @param duration			Duration of the deploy
+ * @remark					L4D AND L4D2
+ *
+ * @return					Plugin_Handled to block the reviving, Plugin_Changed to override duration, Plugin_Continue otherwise
+ */
+forward Action SU_OnRevive(int client, int target, float& duration);
+
+/**
+ * @brief					Called when a survivor heals with a first aid kit
+ *
+ * @param client			Survivor performing heal
+ / @param target			Survivor being healed
+ * @param duration			Duration of the healing
+ *
+ * @return					Plugin_Handled to block the healing, Plugin_Changed to override duration, Plugin_Continue otherwise
+ */
+ forward Action SU_OnHeal(int client, int target, float& duration);
