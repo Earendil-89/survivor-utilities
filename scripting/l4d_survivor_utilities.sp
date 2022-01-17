@@ -34,6 +34,7 @@
  * ================================================================================ *
  */
  
+ 
 #pragma semicolon 1
 #pragma newdecls required
 
@@ -44,7 +45,7 @@
 #include <left4dhooks>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION "1.2"
+#define PLUGIN_VERSION	"1.2"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -91,22 +92,22 @@ Handle g_hRecoilTimer[MAXPLAYERS+1];	// Timer that removes stacked recoils on ex
 ConVar	g_hRunSpeed, g_hWaterSpeed, g_hLimpSpeed, g_hCritSpeed, g_hWalkSpeed, g_hCrouchSpeed, g_hExhaustSpeed, g_hTempDecay,
 		g_hToxicDmg, g_hToxicDelay, g_hBleedDmg, g_hBleedDelay, g_hLimpHealth, g_hFreezeOverride,
 		g_hToxicOverride, g_hBleedOverride, g_hExhaustOverride, g_hHealDuration, g_hReviveDuration,
-		g_hDefibDuration, g_hPacksDuration, g_hAdrenSpeed;
+		g_hDefibDuration, g_hAdrenSpeed, g_hMaxHealth;
 
 GlobalForward	ForwardFreeze, ForwardBleed, ForwardToxic, ForwardExhaust, ForwardFreezeEnd, ForwardBleedEnd, ForwardToxicEnd, ForwardExhaustEnd,
-				ForwardKit, ForwardDefib, ForwardPack, ForwardRevive, ForwardHeal;
+				ForwardDefib, ForwardRevive, ForwardHeal;
 
 bool g_bL4D2;
 
-// Float that stores convar values to check if surivvor is limping, since they are being requested
-// multiple times I store the values instead of requesting them continously
+// I use here variables to store ConVars that can be requested every frame
 float g_fTempDecay;
 float g_fLimpHealth;
+int g_iMaxHealth;
 // Temporary stores original ConVar when is modified to change per-player heal and revive speeds
-float g_fHealDuration = -1.0;
-float g_fDefibDuration = -1.0;
-float g_fReviveDuration = -1.0;
-float g_fPacksDuration = -1.0;
+float g_fHealDuration;
+float g_fDefibDuration;
+float g_fReviveDuration;
+bool g_bHealChanged, g_bReviveChanged;
 		
 int g_iPostProcess;		// env_postprocess entity reference
 int g_iFogVolume;		// env_fog entity reference
@@ -160,9 +161,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	ForwardToxicEnd =	new GlobalForward("SU_OnToxicEnd",			ET_Ignore, Param_Cell);
 	ForwardExhaustEnd =	new GlobalForward("SU_OnExhaustEnd",		ET_Ignore, Param_Cell);
 	// Forwards for reviving/backpack actions
-	ForwardKit =		new GlobalForward("SU_OnMedkitUse",			ET_Event, Param_Cell, Param_FloatByRef, Param_Cell);
-	ForwardDefib =		new GlobalForward("SU_OnDefibUse",			ET_Event, Param_Cell, Param_FloatByRef);
-	ForwardPack =		new GlobalForward("SU_OnUpgradePackUse",	ET_Event, Param_Cell, Param_FloatByRef);
+	ForwardDefib =		new GlobalForward("SU_OnDefib",				ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
 	ForwardRevive =		new GlobalForward("SU_OnRevive",			ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
 	ForwardHeal =		new GlobalForward("SU_OnHeal",				ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
 
@@ -203,8 +202,8 @@ public void OnPluginStart()
 	if( g_bL4D2 )
 	{
 		g_hDefibDuration =	FindConVar("defibrillator_use_duration");
-		g_hPacksDuration =	FindConVar("upgrade_pack_use_duration");
 		g_hAdrenSpeed =		FindConVar("adrenaline_revive_speedup");
+		g_hMaxHealth =		FindConVar("first_aid_kit_max_heal");
 	}
 
 	g_hRunSpeed.AddChangeHook(CVarChange_Speeds);
@@ -241,8 +240,10 @@ public void OnPluginStart()
 
 	if( g_bL4D2 )
 	{
-		CreateDetour(hGameData, BackPackUse,			"CBaseBackpackItem::StartAction",	false);
-		CreateDetour(hGameData, BackPackUse_Post,		"CBaseBackpackItem::StartAction",	true);
+		CreateDetour(hGameData, MedStartAct,			"CFirstAidKit::ShouldStartAction",	false);
+//		CreateDetour(hGameData, MedStartAct_Post,		"CFirstAidKit::ShouldStartAction",	true);
+		CreateDetour(hGameData, DefStartAct,			"CItemDefibrillator::ShouldStartAction", false);
+//		CreateDetour(hGameData, DefStartAct_Post,		"CItemDefibrillator::ShouldStartAction", true);
 	}
 	else
 	{
@@ -337,6 +338,7 @@ void GameConVars()
 {
 	g_fTempDecay = g_hTempDecay.FloatValue;
 	g_fLimpHealth = g_hLimpHealth.FloatValue;
+	g_iMaxHealth = g_hMaxHealth.IntValue;
 }
 
 //==========================================================================================
@@ -437,7 +439,7 @@ public Action Event_Player_Replaced(Event event, const char[] name, bool dontBro
 public Action Event_Bot_Replaced(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("player"));
-	if( !IsValidAliveSurvivor(client) ) return;
+	if( !IsPlayerAlive(client) ) return;
 	
 	if( SU_IsFrozen(client) ) 		g_hFreezeTimer[client] = CreateTimer(g_fSaveFreeze[client], Freeze_Timer, client);
 	if( SU_IsBleeding(client) )		g_hBleedTimer[client] = CreateTimer(g_hBleedDelay.FloatValue, BleedDmg_Timer, client);
@@ -466,13 +468,10 @@ public MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 {
 	// Player reviving <- pTHis
 	int client = DHookGetParam(hParams, 1); // Player revived
-	int adren;
 	float duration;
 	if( g_bL4D2 )
-	{
-		adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
-		duration = adren == 0 ? g_hHealDuration.FloatValue : g_hHealDuration.FloatValue * g_hAdrenSpeed.FloatValue;
-	}
+		duration = GetEntProp(client, Prop_Send, "m_bAdrenalineActive") == 0 ? g_hHealDuration.FloatValue : g_hHealDuration.FloatValue * g_hAdrenSpeed.FloatValue;
+
 	else duration = g_hHealDuration.FloatValue;
 	Action aResult;
 	
@@ -491,6 +490,7 @@ public MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 	{
 		g_fReviveDuration = g_hReviveDuration.FloatValue;
 		g_hReviveDuration.SetFloat(duration, true, false);
+		g_bReviveChanged = true;
 	}
 
 	return MRES_Ignored;
@@ -498,7 +498,7 @@ public MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 
 public MRESReturn OnRevive_Post(int pThis, Handle hReturn, Handle hParams)
 {
-	if( g_fReviveDuration >= 0.0 )
+	if( g_bReviveChanged )
 	{
 		g_hReviveDuration.SetFloat(g_fReviveDuration, true, false);
 		g_fReviveDuration = -1.0;
@@ -507,79 +507,123 @@ public MRESReturn OnRevive_Post(int pThis, Handle hReturn, Handle hParams)
 	return MRES_Ignored;
 }
 
-// pThis -> backpack item
-public MRESReturn BackPackUse(int pThis, Handle hReturn, Handle hParams)
-{
-	static char sItemName[32];
-	GetEntityClassname(pThis, sItemName, sizeof(sItemName));
-	
-	int client = GetEntPropEnt(pThis, Prop_Data, "m_hOwnerEntity");
-	
-	if( StrContains(sItemName, "first", false) )
-	{
-		if( !CallForwardKit(client, DHookGetParam(hParams, 1)) )
-		{
-			DHookSetReturn(hReturn, 0);
-			return MRES_Supercede;
-		}
-	}	
-	else if( StrContains(sItemName, "defib", false) )
-	{
-		if( !CallForwardDefib(client) )
-		{
-			DHookSetReturn(hReturn, 0);
-			return MRES_Supercede;
-		}
-	}
-	else if( !CallForwardPack(client) )
-	{
-		DHookSetReturn(hReturn, 0);
-		return MRES_Supercede;
-	}
-
-	return MRES_Ignored;
-}
-
-public MRESReturn BackPackUse_Post(int pThis, Handle hReturn, Handle hParams)
-{
-	if( g_fHealDuration >= 0.0 )
-	{
-		g_hHealDuration.SetFloat(g_fHealDuration, true, false);
-		g_fHealDuration = -1.0;
-	}
-	if( g_fDefibDuration >= 0.0 )
-	{
-		g_hDefibDuration.SetFloat(g_fDefibDuration, true, false);
-		g_fDefibDuration = -1.0;
-	}
-	if( g_fPacksDuration >= 0.0 )
-	{
-		g_hPacksDuration.SetFloat(g_fPacksDuration, true, false);
-		g_fPacksDuration = -1.0;
-	}
-	return MRES_Ignored;
-}
 // pThis -> client
 public MRESReturn StartHealing(int pThis, Handle hReturn, Handle hParams)
 {
 	int target = DHookGetParam(hParams, 1);
-	if( !CallForwardHeal(pThis, target) )
+	float duration = g_hHealDuration.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardHeal);
+	Call_PushCell(pThis);
+	Call_PushCell(target);
+	Call_PushFloatRef(duration);
+	Call_Finish(aResult);
+	
+	if( aResult == Plugin_Changed )
+	{
+		g_fHealDuration = g_hHealDuration.FloatValue;
+		g_hHealDuration.SetFloat(duration, true, false);
+		g_bHealChanged = true;
+	}
+	else if( aResult == Plugin_Handled ) 
+	{
+		DHookSetReturn(hReturn, 0);
 		return MRES_Supercede;
+	}
 	
 	return MRES_Ignored;
 }
 
 public MRESReturn StartHealing_Post(int pThis, Handle hReturn)
 {
-
-	if( g_fHealDuration >= 0.0 )
+	if( g_bHealChanged )
 	{
 		g_hHealDuration.SetFloat(g_fHealDuration, true, false);
-		g_fHealDuration = -1.0;
+		g_bHealChanged = false;
 	}
 	
 	return MRES_Ignored;
 }
+
+public MRESReturn MedStartAct(Handle hReturn, Handle hParams)
+{
+	int client = DHookGetParam(hParams, 2);
+	int target = DHookGetParam(hParams, 3);
+	int maxHP = GetEntProp(client, Prop_Send, "m_iMaxHealth");
+	int health = GetClientHealth(target) + 1;	// Because survivors can't heal if their HP is 1 point below limits
+	
+	if( health >= maxHP || health >= g_iMaxHealth )
+		return MRES_Ignored;
+	
+	float duration = GetEntProp(client, Prop_Send, "m_bAdrenalineActive") == 0 ? g_hHealDuration.FloatValue : g_hHealDuration.FloatValue * g_hAdrenSpeed.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardHeal);
+	Call_PushCell(client);
+	Call_PushCell(target);
+	Call_PushFloatRef(duration);
+	Call_Finish(aResult);
+	
+	if( aResult == Plugin_Changed )
+	{
+		g_fHealDuration = g_hHealDuration.FloatValue;
+		g_hHealDuration.SetFloat(duration, true, false);
+		RequestFrame(HealFrame);
+	}
+	else if( aResult == Plugin_Handled )
+	{
+		DHookSetReturn(hReturn, 0);
+		return MRES_Supercede;
+	}
+	
+	return MRES_Ignored;
+}
+
+public void HealFrame()
+{
+	g_hHealDuration.SetFloat(g_fHealDuration, true, false);
+	g_fHealDuration = -1.0;
+}
+
+public MRESReturn DefStartAct(Handle hReturn, Handle hParams)
+{
+	int client = DHookGetParam(hParams, 2);
+	int model = DHookGetParam(hParams, 3);
+	float duration = GetEntProp(client, Prop_Send, "m_bAdrenalineActive") == 0 ? g_hDefibDuration.FloatValue : g_hDefibDuration.FloatValue * g_hAdrenSpeed.FloatValue;
+	Action aResult;
+	
+	Call_StartForward(ForwardDefib);
+	Call_PushCell(client);
+	Call_PushCell(model);
+	Call_PushFloatRef(duration);
+	Call_Finish(aResult);
+	
+//	if( duration < 0.0 ) duration = 0.0;
+	
+	if( aResult == Plugin_Handled )
+	{
+		DHookSetReturn(hReturn, 0);
+		return MRES_Supercede;
+	}
+		else if( aResult == Plugin_Changed )
+	{
+		PrintToServer("Attempting change defib duration");
+		g_fDefibDuration = g_hDefibDuration.FloatValue;
+		g_hDefibDuration.SetFloat(duration, true, false);
+		RequestFrame(Defib_Frame);	
+	}
+		
+	return MRES_Ignored;
+}
+
+// Need to wait one frame to set the ConVar back to its default value
+public void Defib_Frame()
+{
+	g_hDefibDuration.SetFloat(g_fDefibDuration, true, false);
+	g_fDefibDuration = -1.0;
+}
+
 //==========================================================================================
 //									DHooks & SDKHooks
 //==========================================================================================
@@ -1139,7 +1183,6 @@ public int Native_RemoveFreeze(Handle plugin, int numParams)
 	Call_StartForward(ForwardFreezeEnd);
 	Call_PushCell(client);
 	Call_Finish();
-	
 }
 
 public int Native_AddBleed(Handle plugin, int numParams)
@@ -1410,101 +1453,17 @@ public int Native_GetExhaust(Handle plugin, int numParams)
 	return g_iExhaustToken[client] > 0 ? true : false;
 }
 
-bool CallForwardKit(int client, int param)
-{
-	bool friendHeal = param == 0 ? false : true;
-	int adren;
-	float fTime;
-	if( g_bL4D2 )
-	{
-		adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
-		fTime = adren == 0 ? g_hHealDuration.FloatValue : g_hHealDuration.FloatValue * g_hAdrenSpeed.FloatValue;
-	}
-	else fTime = g_hHealDuration.FloatValue;
-	Action aResult;
-	
-	Call_StartForward(ForwardKit);
-	Call_PushCell(client);
-	Call_PushFloatRef(fTime);
-	Call_PushCell(friendHeal);
-	Call_Finish(aResult);
-	
-	if( aResult == Plugin_Changed )
-	{
-		g_fHealDuration = g_hHealDuration.FloatValue;	// Save the convar temporary
-		g_hHealDuration.SetFloat(fTime, true, false);
-	}
-	else if( aResult == Plugin_Handled) return false;
-	
-	return true;
-}
 
-bool CallForwardDefib(int client)
-{
-	int adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
-	float duration = adren == 0 ? g_hDefibDuration.FloatValue : g_hDefibDuration.FloatValue * g_hAdrenSpeed.FloatValue;
-	Action aResult;
-	
-	Call_StartForward(ForwardDefib);
-	Call_PushCell(client);
-	Call_PushFloatRef(duration);
-	Call_Finish(aResult);
-	
-	if( aResult == Plugin_Changed )
-	{
-		g_fDefibDuration = g_hDefibDuration.FloatValue;	// Save the convar temporary
-		g_hHealDuration.SetFloat(duration, true, false);
-	}
-	else if( aResult == Plugin_Handled) return false;
-	
-	return true;
-}
-
-bool CallForwardPack(int client)
-{
-	int adren = GetEntProp(client, Prop_Send, "m_bAdrenalineActive");
-	float duration = adren == 0 ? g_hPacksDuration.FloatValue : g_hPacksDuration.FloatValue * g_hAdrenSpeed.FloatValue;
-	Action aResult;
-	
-	Call_StartForward(ForwardPack);
-	Call_PushCell(client);
-	Call_PushFloatRef(duration);
-	Call_Finish(aResult);
-	
-	if( aResult == Plugin_Changed )
-	{
-		g_fPacksDuration = g_hPacksDuration.FloatValue;
-		g_hPacksDuration.SetFloat(duration, true, false);
-	}
-	else if( aResult == Plugin_Handled ) return false;
-	
-	return true;
-}
-
-bool CallForwardHeal(int client, int target)
-{
-	float duration = g_hHealDuration.FloatValue;
-	Action aResult;
-	
-	Call_StartForward(ForwardHeal);
-	Call_PushCell(client);
-	Call_PushCell(target);
-	Call_PushCellRef(duration);
-	Call_Finish(aResult);
-	
-	if( aResult == Plugin_Changed )
-	{
-		g_fHealDuration = g_hHealDuration.FloatValue;
-		g_hHealDuration.SetFloat(duration, true, false);
-	}
-	else if( aResult == Plugin_Handled ) return false;
-	
-	return true;
-}
 
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.2	(13-Jan-2022)
+		- Added detouring for game functions:
+			* Healing
+			* Reviving
+		- Detours allow to modify healing and revive duration, and block events.
+		- Minor optimizations.
 * 1.1.2 (09-Jan-2022)
 		- Blocked plugin error messages when a survivor joins infected team (thanks to Sev for pointing the error).
 * 1.1.1 (01-Jan-2022)
