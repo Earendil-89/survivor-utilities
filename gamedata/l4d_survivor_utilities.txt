@@ -12,23 +12,9 @@
 				"this"			"entity"
 				"arguments"
 				{
-					"a1"
+					"target"	// Client being healed
 					{
 						"type"	"cbaseentity"
-					}
-				}
-			}
-			"CBaseBackpackItem::StartAction"
-			{
-				"signature"		"CBaseBackpackItem::StartAction"
-				"callconv"		"thiscall"
-				"return"		"int"
-				"this"			"entity"
-				"arguments"
-				{
-					"a1"
-					{
-						"type"	"int"
 					}
 				}
 			}
@@ -46,23 +32,57 @@
 					}
 				}
 			}
+			"CFirstAidKit::ShouldStartAction"
+			{
+				"signature"		"CFirstAidKit::ShouldStartAction"
+				"callconv"		"thiscall"
+				"return"		"int"
+				"this"			"ignore"
+				"arguments"
+				{
+					"actionType"
+					{
+						"type"	"int"
+					}
+					"client"
+					{
+						"type"	"cbaseentity"
+					}
+					"target"
+					{
+						"type"	"cbaseentity"
+					}
+				}
+			}
+			
+			"CItemDefibrillator::ShouldStartAction"
+			{
+				"signature"		"CItemDefibrillator::ShouldStartAction"
+				"callconv"		"thiscall"
+				"return"		"int"
+				"this"			"ignore"
+				"arguments"
+				{
+					"actionType"
+					{
+						"type"	"int"
+					}
+					"client"
+					{
+						"type"	"cbaseentity"
+					}
+					"targetModel"
+					{
+						"type"	"cbaseentity"
+					}	
+				}
+			}
 		}
 	}
 	"left4dead2"
 	{
 		"Signatures"
 		{
-			/*
-			 *  CBaseBackpackItem::StartAction(CBaseBackpackItem::BackpackItemActionType,CBaseBackpackItem::BackpackItemActionTrigger)
-			 */
-			"CBaseBackpackItem::StartAction"
-			{
-				"library"	"server"
-				"linux"		"@_ZN17CBaseBackpackItem11StartActionENS_22BackpackItemActionTypeENS_25BackpackItemActionTriggerE"
-				"windows"	"\x2A\x2A\x2A\x2A\x2A\x2A\x8B\x2A\xE8\x2A\x2A\x2A\x2A\x8B\x2A\x85\x2A\x75\x2A\x5F\x32\x2A\x5E\x8B"
-				/*  ? ? ? ? ? ? 8B ? E8 ? ? ? ? 8B ? 85 ? 75 ? 5F 32 ? 5E 8B  */
-				/* https://github.com/Psykotikism/L4D1-2_Signatures/blob/main/l4d2/gamedata/l4d2_signatures.txt#L211 */
-			}
 			/*
 			 *	CTerrorPlayer::StartReviving(CTerrorPlayer *)
 			 */
@@ -74,7 +94,29 @@
 				/* 55 8B ? 81 EC 14 ? ? ? A1 D8 ? ? ? 33 ? 89 ? ? 53 8B ? ? 8B 83 */
 				/* Search: aSStartsRevivin */
 			}
-		}
+			/*
+			 *	CFirstAidKit::ShouldStartAction(CBaseBackpackItem::BackpackItemActionType,CTerrorPlayer *,CBaseEntity *)
+			 */
+			"CFirstAidKit::ShouldStartAction"
+			{
+				"library"	"server"
+				"linux"		"@_ZN12CFirstAidKit17ShouldStartActionEN17CBaseBackpackItem22BackpackItemActionTypeEP13CTerrorPlayerP11CBaseEntity"
+				"windows"	"\x2A\x2A\x2A\x2A\x2A\x2A\x2A\x8B\x2A\x8B\x90\x2A\x2A\x2A\x2A\x57\x8B\x2A\x8B\x2A\xFF\x2A\x84\x2A\x75\x2A\x5F"
+				/* ? ? ? ? ? ? ? 8B ? 8B 90 ? ? ? ? 57 8B ? 8B ? FF ? 84 ? 75 ? 5F */
+				/* Search: https://github.com/Psykotikism/L4D1-2_Signatures/blob/main/l4d2/gamedata/l4d2_signatures.txt#L1630 */
+			}
+			/*
+			 *	CItemDefibrillator::ShouldStartAction(CBaseBackpackItem::BackpackItemActionType,CTerrorPlayer *,CBaseEntity *)
+			 */
+			"CItemDefibrillator::ShouldStartAction"
+			 {
+				"library"	"server"
+				"linux"		"@_ZN18CItemDefibrillator17ShouldStartActionEN17CBaseBackpackItem22BackpackItemActionTypeEP13CTerrorPlayerP11CBaseEntity"
+				"windows"	"\x55\x8B\x2A\x53\x56\x57\x8B\x2A\x2A\x8B\x2A\x8B\x90\x2A\x2A\x2A\x2A\x8B\x2A\x8B\x2A\xFF\x2A\x8B\x2A\x2A\x84"
+				/* 55 8B ? 53 56 57 8B ? ? 8B ? 8B 90 ? ? ? ? 8B ? 8B ? FF ? 8B ? ? 84 */
+				/* Search: "defibrillator_used_fail" */
+			 }
+		}	
 	}
 	"left4dead"
 	{
