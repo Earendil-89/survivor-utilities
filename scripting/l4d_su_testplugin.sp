@@ -344,6 +344,7 @@ public void SU_OnFreezeEnd(int client)
 	#if DEBUG
 	PrintToServer("**** Survivor %N Freeze ended ****", client);
 	#endif
+	
 }
 
 public void SU_OnBleedEnd(int client)
@@ -365,4 +366,34 @@ public void SU_OnExhaustEnd(int client)
 	#if DEBUG
 	PrintToServer("**** Survivor %N Exhaust ended ****", client);
 	#endif
+}
+
+
+public Action SU_OnDefib(int client, int targetModel, float& duration)
+{
+	#if DEBUG
+	PrintToServer("**** Survivor %N is using a defibrillator ****", client);
+	PrintToServer("**** Target model edict: %i ****", targetModel);
+	PrintToServer("**** Defibrillator use time %f ****", duration);
+	#endif
+	return Plugin_Continue;
+}
+
+
+public Action SU_OnRevive(int client, int target, float& duration)
+{
+	#if DEBUG
+	PrintToServer("**** Survivor %N is reviving %N ****", client, target);
+	PrintToServer("**** Revive time %f ****", duration);
+	#endif
+	return Plugin_Continue;
+}
+
+public Action SU_OnHeal(int client, int target, float& duration)
+{
+	#if DEBUG
+	PrintToServer("**** Survivor %N is healing %N ****", client, target);
+	PrintToServer("**** Heal time %f ****", duration);
+	#endif
+	return Plugin_Continue;
 }
