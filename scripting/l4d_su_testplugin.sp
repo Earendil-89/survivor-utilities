@@ -13,9 +13,8 @@
 #include <sourcemod>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.2"
 #define DEBUG 1
-
 
 public Plugin myinfo =
 {
@@ -378,7 +377,6 @@ public Action SU_OnDefib(int client, int targetModel, float& duration)
 	#endif
 	return Plugin_Continue;
 }
-
 
 public Action SU_OnRevive(int client, int target, float& duration)
 {
