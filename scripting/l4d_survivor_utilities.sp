@@ -1,37 +1,37 @@
 /**
  * ================================================================================ *
- *						[L4D & L4D2] Survivor Utilities (API)					 	*
+ *                      [L4D & L4D2] Survivor Utilities (API)                       *
  * -------------------------------------------------------------------------------- *
- *	Author		:	Eärendil														*
- *	Descrp		:	Modify survivor speeds and add custom effects.					*
- *	Version		:	1.2																*
- *	Link		:	https://forums.alliedmods.net/showthread.php?t=335683			*
+ *  Author      :   Eärendil                                                        *
+ *  Descrp      :   Modify survivor speeds and add custom effects.                  *
+ *  Version     :   1.2                                                             *
+ *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
- *																					*
- *	CopyRight (C) 2022 Eduardo "Eärendil" Chueca									*
+ *                                                                                  *
+ *  CopyRight (C) 2022 Eduardo "Eärendil" Chueca                                    *
  * -------------------------------------------------------------------------------- *
- *	This program is free software; you can redistribute it and/or modify it under	*
- *	the terms of the GNU General Public License, version 3.0, as published by the	*
- *	Free Software Foundation.														*
- *														 							*
- *	This program is distributed in the hope that it will be useful, but WITHOUT		*
- *	ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS	*
- *	FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more			*
- *	details.																		*
- *																					*
- *	You should have received a copy of the GNU General Public License along with	*
- *	this program.  If not, see <http://www.gnu.org/licenses/>.						*
- * ================================================================================	*
- *																					*
- *	Additional info:																*
- *	 - This speed method is not perfect, speed doesn't increase linearly.			*
- *	 - Recomended values between 0.5 and 1.75 of player speed.						*
- *	 - Higher or lower values will lose linearly easily and players will notice		*
- *		weird speed changes while moving.											*
- *	Special thanks:																	*
- *	 - SilverShot for helipng with the postprocess and fog_volume. Also for advices	*
- *		using natives and GlobalForwards.											*
- * ================================================================================	*
+ *  This program is free software; you can redistribute it and/or modify it under   *
+ *  the terms of the GNU General Public License, version 3.0, as published by the   *
+ *  Free Software Foundation.                                                       *
+ *                                                                                  *
+ *  This program is distributed in the hope that it will be useful, but WITHOUT     *
+ *  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS   *
+ *  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more          *
+ *  details.                                                                        *
+ *                                                                                  *
+ *  You should have received a copy of the GNU General Public License along with    *
+ *  this program.  If not, see <http://www.gnu.org/licenses/>.                      *
+ * ================================================================================ *
+ *                                                                                  *
+ *  Additional info:                                                                *
+ *   - This speed method is not perfect, speed doesn't increase linearly.           *
+ *   - Recomended values between 0.5 and 1.75 of player speed.                      *
+ *   - Higher or lower values will lose linearly easily and players will notice     *
+ *      weird speed changes while moving.                                           *
+ *  Special thanks:                                                                 *
+ *   - SilverShot for helipng with the postprocess and fog_volume. Also for advices *
+ *      using natives and GlobalForwards.                                           *
+ * ================================================================================ *
  */
 #pragma semicolon 1
 #pragma newdecls required
