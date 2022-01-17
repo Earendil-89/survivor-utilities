@@ -24,4 +24,5 @@ As an API this plugin has the next conditions for survivors:
     Exhaustion, while exhausted the survivor will lose movement speed, maxed shove penalty and increased recoil, a screen effect is displayed (thanks to Silvers for the fog_volume and postprocess code). Exhaust can be cancelled with adrenaline, also if the survivor doesn’t move will recover faster.
     
 Requirements:
+    Dynamic Hooks with Detour support or SM 1.11
     Left 4 DHooks Direct
