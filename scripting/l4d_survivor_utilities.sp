@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.2                                                             *
+ *  Version     :   1.2.1                                                           *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -44,7 +44,7 @@
 #include <left4dhooks>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION	"1.2"
+#define PLUGIN_VERSION	"1.2.1"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -545,6 +545,9 @@ public MRESReturn MedStartAct(Handle hReturn, Handle hParams)
 {
 	int client = DHookGetParam(hParams, 2);
 	int target = DHookGetParam(hParams, 3);
+	if( target > MaxClients || GetClientTeam(target) != 2 )	// Because shoving common infected or specials triggers this function
+		return MRES_Ignored;
+
 	int maxHP = GetEntProp(client, Prop_Send, "m_iMaxHealth");
 	int health = GetClientHealth(target) + 1;	// Because survivors can't heal if their HP is 1 point below limits
 	
@@ -594,7 +597,7 @@ public MRESReturn DefStartAct(Handle hReturn, Handle hParams)
 	Call_PushFloatRef(duration);
 	Call_Finish(aResult);
 	
-//	if( duration < 0.0 ) duration = 0.0;
+//	if( duration < 0.0 ) duration = 0.0; // Don't clamp since for some reason ConVar allows negative values !?
 	
 	if( aResult == Plugin_Handled )
 	{
@@ -603,7 +606,6 @@ public MRESReturn DefStartAct(Handle hReturn, Handle hParams)
 	}
 		else if( aResult == Plugin_Changed )
 	{
-		PrintToServer("Attempting change defib duration");
 		g_fDefibDuration = g_hDefibDuration.FloatValue;
 		g_hDefibDuration.SetFloat(duration, true, false);
 		RequestFrame(Defib_Frame);	
@@ -1451,15 +1453,18 @@ public int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
-* 1.2	(13-Jan-2022)
+* 1.2.1 (19-Jan-2022)
+		- Fixed errors when shoving a common infected with first aid kit in L4D2 (thanks to Sev for reporting).
+		- Fixed fakely triggering of SU_OnHeal when a survivor shoves an special infected with first aid kit in L4D2.
+* 1.2	(18-Jan-2022)
 		- Added detouring for game functions:
-			* L4D2: backpack usage.
-			* L4D: Healing.
-			* L4D & L4D2: Reviving survivors.
+			* Healing.
+			* Reviving survivors.
+			* Defib survivors (L4D2)
 		- Detours allow to modify backpack usage, healing and revive duration, and block events.
 		- Minor optimizations.
 * 1.1.2 (09-Jan-2022)
-		- Blocked plugin error messages when a survivor joins infected team (thanks to Sev for pointing the error).
+		- Blocked plugin error messages when a survivor joins infected team (thanks to Sev for reporting).
 * 1.1.1 (01-Jan-2022)
 		- Fixed timer Handle errors.
 * 1.1	(30-Dec-2021)
