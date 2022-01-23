@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.2.1                                                           *
+ *  Version     :   1.2.2                                                           *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -44,7 +44,7 @@
 #include <left4dhooks>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION	"1.2.1"
+#define PLUGIN_VERSION	"1.2.2"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -91,7 +91,7 @@ Handle g_hRecoilTimer[MAXPLAYERS+1];	// Timer that removes stacked recoils on ex
 ConVar	g_hRunSpeed, g_hWaterSpeed, g_hLimpSpeed, g_hCritSpeed, g_hWalkSpeed, g_hCrouchSpeed, g_hExhaustSpeed, g_hTempDecay,
 		g_hToxicDmg, g_hToxicDelay, g_hBleedDmg, g_hBleedDelay, g_hLimpHealth, g_hFreezeOverride,
 		g_hToxicOverride, g_hBleedOverride, g_hExhaustOverride, g_hHealDuration, g_hReviveDuration,
-		g_hDefibDuration, g_hAdrenSpeed, g_hMaxHealth;
+		g_hDefibDuration, g_hAdrenSpeed, g_hMaxHealth, g_hRecoilScale;
 
 GlobalForward	ForwardFreeze, ForwardBleed, ForwardToxic, ForwardExhaust, ForwardFreezeEnd, ForwardBleedEnd, ForwardToxicEnd, ForwardExhaustEnd,
 				ForwardDefib, ForwardRevive, ForwardHeal;
@@ -173,25 +173,26 @@ public void OnPluginStart()
 {	
 	CreateConVar("survivor_utilities_version", PLUGIN_VERSION,	"L4D Survivor Utilities Version", 	FCVAR_NOTIFY|FCVAR_DONTRECORD);
 	// Speed ConVars , the default values are the game original values
-	g_hRunSpeed =			CreateConVar("sm_su_run_speed",			"220.0", 	"Default survivor run speed.",							FCVAR_NOTIFY, true, 110.0);	// When survivor should be running, dont go below 110.0 or players will feel weird movements
-	g_hWaterSpeed =			CreateConVar("sm_su_water_speed",		"115.0",	"Survivor speed while in water.",						FCVAR_NOTIFY, true, 80.0);
-	g_hLimpSpeed =			CreateConVar("sm_su_limp_speed",		"150.0",	"Survivor limping speed (HP below 40).",				FCVAR_NOTIFY, true, 65.0);	// Under 65 player speed is not linear and falls rapidly to 0 around 50 speed value
-	g_hCritSpeed =			CreateConVar("sm_su_critical_speed",	"85.0",		"Survivor speed when 1 HP afer one incapacitation.",	FCVAR_NOTIFY, true, 65.0);
-	g_hWalkSpeed =			CreateConVar("sm_su_walk_speed",		"85.0",		"Survivor walk speed.",									FCVAR_NOTIFY, true, 65.0);
-	g_hCrouchSpeed =		CreateConVar("sm_su_crouch_speed",		"75.0",		"Survivor speed while crouching.",						FCVAR_NOTIFY, true, 65.0);
-	g_hExhaustSpeed =		CreateConVar("sm_su_exhaust_speed",		"115.0",	"Survivor speed when exhausted by plugin.",				FCVAR_NOTIFY, true, 110.0);
+	g_hRunSpeed =			CreateConVar("sm_su_run_speed",				"220.0", 	"Default survivor run speed.",							FCVAR_NOTIFY, true, 110.0);	// When survivor should be running, dont go below 110.0 or players will feel weird movements
+	g_hWaterSpeed =			CreateConVar("sm_su_water_speed",			"115.0",	"Survivor speed while in water.",						FCVAR_NOTIFY, true, 80.0);
+	g_hLimpSpeed =			CreateConVar("sm_su_limp_speed",			"150.0",	"Survivor limping speed (HP below 40).",				FCVAR_NOTIFY, true, 65.0);	// Under 65 player speed is not linear and falls rapidly to 0 around 50 speed value
+	g_hCritSpeed =			CreateConVar("sm_su_critical_speed",		"85.0",		"Survivor speed when 1 HP afer one incapacitation.",	FCVAR_NOTIFY, true, 65.0);
+	g_hWalkSpeed =			CreateConVar("sm_su_walk_speed",			"85.0",		"Survivor walk speed.",									FCVAR_NOTIFY, true, 65.0);
+	g_hCrouchSpeed =		CreateConVar("sm_su_crouch_speed",			"75.0",		"Survivor speed while crouching.",						FCVAR_NOTIFY, true, 65.0);
+	g_hExhaustSpeed =		CreateConVar("sm_su_exhaust_speed",			"115.0",	"Survivor speed when exhausted by plugin.",				FCVAR_NOTIFY, true, 110.0);
 	// Intoxicate ConVars
-	g_hToxicDmg =			CreateConVar("sm_su_toxic_damage",		"1.0",		"Amount of toxic damage dealed to survivors.",			FCVAR_NOTIFY, true, 1.0);
-	g_hToxicDelay =			CreateConVar("sm_su_toxic_delay",		"5.0",		"Delay in seconds between toxic damages.",				FCVAR_NOTIFY, true, 0.1);
-	g_hToxicOverride =		CreateConVar("sm_su_toxic_override",	"2",		"What should plugin do with toxic amount if a player is intoxicated again?\n0 = Don't override amount.\n1 = Override if new amount are higher. \n2 = Add new amount to the remaining amount.\n3 = Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hToxicDmg =			CreateConVar("sm_su_toxic_damage",			"1.0",		"Amount of toxic damage dealed to survivors.",			FCVAR_NOTIFY, true, 1.0);
+	g_hToxicDelay =			CreateConVar("sm_su_toxic_delay",			"5.0",		"Delay in seconds between toxic damages.",				FCVAR_NOTIFY, true, 0.1);
+	g_hToxicOverride =		CreateConVar("sm_su_toxic_override",		"2",		"What should plugin do with toxic amount if a player is intoxicated again?\n0 = Don't override amount.\n1 = Override if new amount are higher. \n2 = Add new amount to the remaining amount.\n3 = Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	// Bleeding ConVars
-	g_hBleedDmg = 			CreateConVar("sm_su_bleed_damage",		"1.0",		"Amount of bleeding damage dealed to survivors.",		FCVAR_NOTIFY, true, 1.0);
-	g_hBleedDelay =			CreateConVar("sm_su_bleed_delay",		"5.0",		"Delay in seconds between bleed damages.",				FCVAR_NOTIFY, true, 0.1);
-	g_hBleedOverride =		CreateConVar("sm_su_bleed_override",	"2",		"What should plugin do with bleed amount if a player is bleeding again?\n0 = Don't override amount.\n1 = Override if new amount is higher. \n2 = Add new amount to the original one.\n3 = Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hBleedDmg = 			CreateConVar("sm_su_bleed_damage",			"1.0",		"Amount of bleeding damage dealed to survivors.",		FCVAR_NOTIFY, true, 1.0);
+	g_hBleedDelay =			CreateConVar("sm_su_bleed_delay",			"5.0",		"Delay in seconds between bleed damages.",				FCVAR_NOTIFY, true, 0.1);
+	g_hBleedOverride =		CreateConVar("sm_su_bleed_override",		"2",		"What should plugin do with bleed amount if a player is bleeding again?\n0 = Don't override amount.\n1 = Override if new amount is higher. \n2 = Add new amount to the original one.\n3 = Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	// Freeze ConVars
-	g_hFreezeOverride =		CreateConVar("sm_su_freeze_override",	"2",		"What should plugin do with freeze time if a player is frozen again?\n0 = Don't change original freeze time.\n1 = Change original freeze time if new time is higher.\n2 = Add the new freeze time to the original time.\n3 = Override original time.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hFreezeOverride =		CreateConVar("sm_su_freeze_override",		"2",		"What should plugin do with freeze time if a player is frozen again?\n0 = Don't change original freeze time.\n1 = Change original freeze time if new time is higher.\n2 = Add the new freeze time to the original time.\n3 = Override original time.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	//Exhaust ConVars
-	g_hExhaustOverride =	CreateConVar("sm_su_exhaust_override",	"2",		"What should plugin do with exhaust amount if a player is exhausted again=\n0 = Don't override amount.\n1 = Override if new amount is higher.\n2 = Add new amount to the original one.\n3 Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hExhaustOverride =	CreateConVar("sm_su_exhaust_override",		"2",		"What should plugin do with exhaust amount if a player is exhausted again=\n0 = Don't override amount.\n1 = Override if new amount is higher.\n2 = Add new amount to the original one.\n3 Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hRecoilScale =		CreateConVar("sm_su_exhaust_recoil_scale",	"1.0",		"Scale the default exhaust recoil by this amount.", FCVAR_NOTIFY, true, 0.0, true, 5.0);
 	
 	// Get server ConVars
 	g_hTempDecay =	 	FindConVar("pain_pills_decay_rate");
@@ -385,6 +386,8 @@ public void Event_Round_Start(Event event, const char[] name, bool dontBroadcast
 
 public Action Event_Weapon_Fire(Event event, const char[] name, bool dontBroadcast)
 {
+	if( g_hRecoilScale.FloatValue == 0.0 ) return Plugin_Continue; // Ignore everything if recoil is disabled 
+	
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if( IsAliveSurvivor(client) && g_iExhaustToken[client] > 0 )
 	{
@@ -394,7 +397,7 @@ public Action Event_Weapon_Fire(Event event, const char[] name, bool dontBroadca
 		{
 			if( StrContains(sBuffer, g_sWeaponRecoils[i], false) != -1 )
 			{
-				g_fRecoilStack[client] -= g_fWeaponRecoils[i]; // Increase the stacked recoil
+				g_fRecoilStack[client] -= g_fWeaponRecoils[i] * g_hRecoilScale.FloatValue; // Increase the stacked recoil
 				break; // Stop loop because string is readed in a way it could find another match with some weapon, so first match is always the desired weapon	
 			}
 		}
@@ -1453,6 +1456,8 @@ public int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.2.2 (23-Jan-2022)
+		- Exhaustion extra recoil added to survivors now can be scaled or disabled by ConVar(thanks to Shao for the request).
 * 1.2.1 (19-Jan-2022)
 		- Fixed errors when shoving a common infected with first aid kit in L4D2 (thanks to Sev for reporting).
 		- Fixed fakely triggering of SU_OnHeal when a survivor shoves an special infected with first aid kit in L4D2.
