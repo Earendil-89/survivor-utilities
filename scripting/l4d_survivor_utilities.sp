@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.2.2                                                           *
+ *  Version     :   1.3                                                             *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -43,8 +43,9 @@
 #include <dhooks>
 #include <left4dhooks>
 #include <survivorutilities>
+#include <profiler>
 
-#define PLUGIN_VERSION	"1.2.2"
+#define PLUGIN_VERSION	"1.3"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -59,7 +60,8 @@ enum
 	STATUS_INCAP,
 	STATUS_NORMAL,
 	STATUS_LIMP,
-	STATUS_CRITICAL
+	STATUS_CRITICAL,
+	STATUS_ADRENALINE
 };
 
 static char g_sWeaponRecoils[][] = {	"shotgun",	"hunting",	"sniper",	"smg",	"magnum",	"pistol",	"ak47",	"desert",	"m60",	"rifle" };
@@ -73,6 +75,8 @@ float g_fCritSpeed[MAXPLAYERS+1];		// Player speed when 1 HP after 1 incapacitat
 float g_fWalkSpeed[MAXPLAYERS+1];		// Player speed while walking (default = 85.0)
 float g_fCrouchSpeed[MAXPLAYERS+1];		// Player speed while crouching (default = 75.0)
 float g_fExhaustSpeed[MAXPLAYERS+1];	// Player speed while exhaust
+float g_fScopeSpeed[MAXPLAYERS+1];		// Player speed while looking through a sniper scope
+float g_fAdrenRunSpeed[MAXPLAYERS+1];	// Player speed when running under adrenaline effect
 // Player conditions
 bool g_bIsFrozen[MAXPLAYERS+1];			// Store if player is frozen
 int g_iExhaustToken[MAXPLAYERS+1];		// Player exhaust tokens
@@ -91,7 +95,7 @@ Handle g_hRecoilTimer[MAXPLAYERS+1];	// Timer that removes stacked recoils on ex
 ConVar	g_hRunSpeed, g_hWaterSpeed, g_hLimpSpeed, g_hCritSpeed, g_hWalkSpeed, g_hCrouchSpeed, g_hExhaustSpeed, g_hTempDecay,
 		g_hToxicDmg, g_hToxicDelay, g_hBleedDmg, g_hBleedDelay, g_hLimpHealth, g_hFreezeOverride,
 		g_hToxicOverride, g_hBleedOverride, g_hExhaustOverride, g_hHealDuration, g_hReviveDuration,
-		g_hDefibDuration, g_hAdrenSpeed, g_hMaxHealth, g_hRecoilScale;
+		g_hDefibDuration, g_hAdrenSpeed, g_hMaxHealth, g_hRecoilScale, g_hScopeSpeed, g_hAdrenRunSpeed;
 
 GlobalForward	ForwardFreeze, ForwardBleed, ForwardToxic, ForwardExhaust, ForwardFreezeEnd, ForwardBleedEnd, ForwardToxicEnd, ForwardExhaustEnd,
 				ForwardDefib, ForwardRevive, ForwardHeal;
@@ -180,6 +184,8 @@ public void OnPluginStart()
 	g_hWalkSpeed =			CreateConVar("sm_su_walk_speed",			"85.0",		"Survivor walk speed.",									FCVAR_NOTIFY, true, 65.0);
 	g_hCrouchSpeed =		CreateConVar("sm_su_crouch_speed",			"75.0",		"Survivor speed while crouching.",						FCVAR_NOTIFY, true, 65.0);
 	g_hExhaustSpeed =		CreateConVar("sm_su_exhaust_speed",			"115.0",	"Survivor speed when exhausted by plugin.",				FCVAR_NOTIFY, true, 110.0);
+	g_hScopeSpeed =			CreateConVar("sm_su_scope_speed",			"85.0",		"Survivor speed while looking through sniper scope.",	FCVAR_NOTIFY, true, 65.0);
+	g_hAdrenRunSpeed =		CreateConVar("sm_su_adren_speed",			"260.0",	"Survivor run speed under adrenaline effect.",			FCVAR_NOTIFY, true, 110.0);
 	// Intoxicate ConVars
 	g_hToxicDmg =			CreateConVar("sm_su_toxic_damage",			"1.0",		"Amount of toxic damage dealed to survivors.",			FCVAR_NOTIFY, true, 1.0);
 	g_hToxicDelay =			CreateConVar("sm_su_toxic_delay",			"5.0",		"Delay in seconds between toxic damages.",				FCVAR_NOTIFY, true, 0.1);
@@ -212,6 +218,8 @@ public void OnPluginStart()
 	g_hCritSpeed.AddChangeHook(CVarChange_Speeds);
 	g_hWalkSpeed.AddChangeHook(CVarChange_Speeds);
 	g_hCrouchSpeed.AddChangeHook(CVarChange_Speeds);
+	g_hScopeSpeed.AddChangeHook(CVarChange_Speeds);
+	g_hAdrenRunSpeed.AddChangeHook(CVarChange_Speeds);
 	
 	g_hTempDecay.AddChangeHook(CVarChange_Game);
 	g_hLimpHealth.AddChangeHook(CVarChange_Game);
@@ -255,7 +263,7 @@ public void OnPluginStart()
 public void OnMapStart()
 {
 	SoundPrecache();
-	for( int i = 0; i <= MaxClients; i++ )
+	for( int i = 1; i <= MaxClients; i++ )
 		SetClientData(i, true);
 }
 
@@ -318,16 +326,41 @@ public void CVarChange_Game(Handle convar, const char[] oldValue, const char[] n
 }
 
 void SetSpeeds()	// I need to change this to prevent override custom player speeds when convar changes
-{
-	for( int i = 0; i <= MaxClients; i++ )
+{	
+	for( int i = 1; i <= MaxClients; i++ )
 	{
-		g_fRunSpeed[i] = g_hRunSpeed.FloatValue;
-		g_fWaterSpeed[i] = g_hWaterSpeed.FloatValue;
-		g_fLimpSpeed[i] = g_hLimpSpeed.FloatValue;
-		g_fCritSpeed[i] = g_hCritSpeed.FloatValue;
-		g_fWalkSpeed[i] = g_hWalkSpeed.FloatValue;
-		g_fCrouchSpeed[i] = g_hCrouchSpeed.FloatValue;
+		ScaleSpeed(g_fRunSpeed[i], g_hRunSpeed.FloatValue, g_fRunSpeed[0]);
+		ScaleSpeed(g_fWaterSpeed[i], g_hWaterSpeed.FloatValue, g_fWaterSpeed[0]);
+		ScaleSpeed(g_fLimpSpeed[i], g_hLimpSpeed.FloatValue, g_fLimpSpeed[0]);
+		ScaleSpeed(g_fCritSpeed[i], g_hCritSpeed.FloatValue, g_fCritSpeed[0]);
+		ScaleSpeed(g_fWalkSpeed[i], g_hWalkSpeed.FloatValue, g_fWalkSpeed[0]);
+		ScaleSpeed(g_fCrouchSpeed[i], g_hCrouchSpeed.FloatValue, g_fCrouchSpeed[0]);
+		ScaleSpeed(g_fScopeSpeed[i], g_hScopeSpeed.FloatValue, g_fScopeSpeed[0]);
+		ScaleSpeed(g_fAdrenRunSpeed[i], g_hAdrenRunSpeed.FloatValue, g_fAdrenRunSpeed[0]);
 	}
+	g_fRunSpeed[0] = g_hRunSpeed.FloatValue;
+	g_fWaterSpeed[0] = g_hWaterSpeed.FloatValue;
+	g_fLimpSpeed[0] = g_hLimpSpeed.FloatValue;
+	g_fCritSpeed[0] = g_hCritSpeed.FloatValue;
+	g_fWalkSpeed[0] = g_hWalkSpeed.FloatValue;
+	g_fCrouchSpeed[0] = g_hCrouchSpeed.FloatValue;
+	g_fScopeSpeed[0] = g_hScopeSpeed.FloatValue;
+	g_fAdrenRunSpeed[0] = g_hAdrenRunSpeed.FloatValue;
+}
+
+void ScaleSpeed(float& currSpeed, const float newSpeed, const float oldSpeed)
+{
+	// Array not loaded yet, plugin start
+	if( oldSpeed == 0 )
+		currSpeed = newSpeed;
+		
+	float cmp = currSpeed - newSpeed;
+	if( cmp < 0.1 && cmp > -0.1 ) // Because floating point numbers have a small error, 
+	{
+		currSpeed = newSpeed;
+		return;
+	}
+	currSpeed = currSpeed * newSpeed / oldSpeed;
 }
 
 void GameConVars()
@@ -631,11 +664,13 @@ public void Defib_Frame()
 public Action L4D_OnGetRunTopSpeed(int client, float &retVal)
 {
 	if( !IsAliveSurvivor(client) ) return Plugin_Continue; // Ignore infected and dead survivors
-		
-	float fBaseSpeed = GetPlayerSpeed(client, GetSurvivorStatus(client), g_fRunSpeed[client]);
+	
+	int iStatus = GetSurvivorStatus(client);	
+	float fBaseSpeed = GetPlayerSpeed(client, iStatus, g_fRunSpeed[client]);
+	
 	if( fBaseSpeed < 0.0 ) return Plugin_Continue; // Ignore negative speeds
 	
-	if( g_iExhaustToken[client] > 0 && g_fExhaustSpeed[client] < fBaseSpeed ) // In case survivor is exhausted and exhaust speed is lower than current speed...
+	if( g_iExhaustToken[client] > 0 && g_fExhaustSpeed[client] < fBaseSpeed && iStatus != STATUS_ADRENALINE ) // In case survivor is exhausted and exhaust speed is lower than current speed...
 		fBaseSpeed = g_fExhaustSpeed[client];
 	
 	retVal = fBaseSpeed;
@@ -711,6 +746,7 @@ int GetSurvivorStatus(int client)
 {
 	if( GetEntProp(client, Prop_Send, "m_isIncapacitated") == 1 ) return STATUS_INCAP;
 
+	if( GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0 ) return STATUS_ADRENALINE;
 	float fAbsHealth = GetAbsHealth(client);
 	if( fAbsHealth >= 1.0 && fAbsHealth < g_fLimpHealth )
 	{
@@ -765,6 +801,14 @@ float GetPlayerSpeed(int client, int playerStatus, float fSpeed)
 		if( fSpeed > g_fWaterSpeed[client] )
 			fSpeed = g_fWaterSpeed[client];
 	}
+	
+	// Attempt to nerf survivor moving speed if scoping, this is like survivor is walking and thats why blocks adrenaline powerup
+	if( GetEntPropEnt(client, Prop_Send, "m_hZoomOwner") != -1 ) {
+		fSpeed = fSpeed < g_fScopeSpeed[client] ? fSpeed : g_fScopeSpeed[client];
+	}
+	// Default game behaviour, when survivor injects adren, hes able to rush in any situation
+	else if( playerStatus == STATUS_ADRENALINE )
+		return g_fAdrenRunSpeed[client];
 	
 	switch( playerStatus )
 	{
@@ -924,7 +968,7 @@ public Action BleedDmg_Timer(Handle timer, int client)
 public Action Recoil_Timer(Handle timer, int client)
 {
 	g_hRecoilTimer[client] = null;
-	if( g_fRecoilStack[client] <= -8 )
+	if( g_fRecoilStack[client] <= -8.0 )
 	{
 		g_fRecoilStack[client] += 8.0;
 		g_hRecoilTimer[client] = CreateTimer(0.5, Recoil_Timer, client);
@@ -1307,7 +1351,7 @@ public int Native_SetSpeed(Handle plugin, int numParams)
 	switch( iSpeedType )
 	{
 		case SPEED_RUN:{
-			if( fSpeed < 100.0 ) fSpeed = 110.0;
+			if( fSpeed < 110.0 ) fSpeed = 110.0;
 			g_fRunSpeed[client] = fSpeed;
 		}
 		case SPEED_WALK:{
@@ -1331,8 +1375,16 @@ public int Native_SetSpeed(Handle plugin, int numParams)
 			g_fWaterSpeed[client] = fSpeed;
 		}
 		case SPEED_EXHAUST:{
-			if( fSpeed < 100.0 ) fSpeed = 110.0;
+			if( fSpeed < 110.0 ) fSpeed = 110.0;
 			g_fExhaustSpeed[client] = fSpeed;
+		}
+		case SPEED_ADRENALINE:{
+			if( fSpeed < 110.0 ) fSpeed = 110.0;
+			g_fAdrenRunSpeed[client] = fSpeed;
+		}
+		case SPEED_SCOPE:{
+			if( fSpeed < 65.0 ) fSpeed = 65.0;
+			g_fScopeSpeed[client] = fSpeed;
 		}
 		default: ThrowNativeError(SP_ERROR_PARAM, "SU_SetSpeed Error: Invalid speed type.");
 	}
@@ -1345,6 +1397,8 @@ public int Native_AddExhaust(Handle plugin, int numParams)
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Client %i is invalid.", client);
 	if( !IsPlayerAlive(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Client %i is not alive.", client);
 	if( GetClientTeam(client) != 2 )	ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Client %i is not a survivor.", client);
+	if( GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0 )
+		ThrowNativeError(SP_ERROR_NATIVE, "SU_AddExhaust Error: Can't implement exhaustion on Client %i because is under adrenaline effect.", client);
 
 	int iTokens = numParams == 1 ? EXHAUST_TOKEN : GetNativeCell(2); // Old version used numParams = 1, and exhaust amount was constant
 	if( iTokens <= 0 ) ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Amount %i is invalid.", iTokens);
@@ -1420,6 +1474,8 @@ public any Native_GetSpeed(Handle plugin, int numParams)
 		case SPEED_CRITICAL:	return g_fCritSpeed[client];
 		case SPEED_WATER:		return g_fWaterSpeed[client];
 		case SPEED_EXHAUST:		return g_fExhaustSpeed[client];
+		case SPEED_ADRENALINE:	return g_fAdrenRunSpeed[client];
+		case SPEED_SCOPE:		return g_fScopeSpeed[client];
 	}
 	
 	ThrowNativeError(SP_ERROR_PARAM, "SU_GetSurvivorGetSpeed Error: Invalid speed type.");
@@ -1456,6 +1512,11 @@ public int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.3	(01-Feb-2022)
+		- Fixed adrenaline and scoping movement speed being overrided by run or limping speed.
+		- Both adrenaline and scoping movement speed are controlled by CVar and accessed by Natives.
+		- SU_AddExhaust now throws an error if client is under adrenaline effect. This prevents API consistency errors.
+		- If speed ConVars are changed ingame, survivor custom speeds will scale proportionally instead of being overrided.
 * 1.2.2 (23-Jan-2022)
 		- Exhaustion extra recoil added to survivors now can be scaled or disabled by ConVar(thanks to Shao for the request).
 * 1.2.1 (19-Jan-2022)
