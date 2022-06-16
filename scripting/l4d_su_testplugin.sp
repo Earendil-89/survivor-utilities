@@ -1,5 +1,5 @@
 /*============================================================================================
-							[L4D & L4D2] Survivor utilities: Test plugin
+                       [L4D & L4D2] Survivor utilities: Test plugin
 ----------------------------------------------------------------------------------------------
 *	Author	:	Eärendil
 *	Descrp	:	Test applying survivor conditions, forwards and natives
@@ -13,7 +13,7 @@
 #include <sourcemod>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION "1.2"
+#define PLUGIN_VERSION "1.2.1"
 #define DEBUG 1
 
 public Plugin myinfo =
@@ -37,12 +37,12 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart()
 {
-	RegAdminCmd("sm_intox",		ADM_Intoxicate, 0);
-	RegAdminCmd("sm_bleed",		ADM_Bleed, 0);
-	RegAdminCmd("sm_freeze2",	ADM_Freeze, 0);	// Because sm_freeze is a command of sourcemod
-	RegAdminCmd("sm_speed",		ADM_Speed, 0);
-	RegAdminCmd("sm_exhaust",	ADM_Exhaust, 0);
-	RegAdminCmd("sm_survivorstatus", ADM_Info, 0);
+	RegAdminCmd("sm_intox",		ADM_Intoxicate, ADMFLAG_GENERIC);
+	RegAdminCmd("sm_bleed",		ADM_Bleed, ADMFLAG_GENERIC);
+	RegAdminCmd("sm_freeze2",	ADM_Freeze, ADMFLAG_GENERIC);	// Because sm_freeze is a command of sourcemod
+	RegAdminCmd("sm_speed",		ADM_Speed, ADMFLAG_GENERIC);
+	RegAdminCmd("sm_exhaust",	ADM_Exhaust, ADMFLAG_GENERIC);
+	RegAdminCmd("sm_survivorstatus", ADM_Info, ADMFLAG_GENERIC);
 }
 
 public Action ADM_Freeze(int client, int args)
@@ -374,6 +374,7 @@ public Action SU_OnDefib(int client, int targetModel, float& duration)
 	PrintToServer("**** Survivor %N is using a defibrillator ****", client);
 	PrintToServer("**** Target model edict: %i ****", targetModel);
 	PrintToServer("**** Defibrillator use time %f ****", duration);
+	PrintToServer("**** Defibrillator use after: %f ****", duration);
 	#endif
 	return Plugin_Continue;
 }
