@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.3                                                             *
+ *  Version     :   1.3.1                                                           *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -45,7 +45,7 @@
 #include <survivorutilities>
 #include <profiler>
 
-#define PLUGIN_VERSION	"1.3"
+#define PLUGIN_VERSION	"1.3.1"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -110,7 +110,7 @@ int g_iMaxHealth;
 float g_fHealDuration;
 float g_fDefibDuration;
 float g_fReviveDuration;
-bool g_bHealChanged, g_bReviveChanged;
+bool g_bHealChanged, g_bReviveChanged; // To tell post hooks that the pre-hooks have changed the ConVar value and they have to reset it
 		
 int g_iPostProcess;		// env_postprocess entity reference
 int g_iFogVolume;		// env_fog entity reference
@@ -247,6 +247,7 @@ public void OnPluginStart()
 	if( g_bL4D2 )
 	{
 		CreateDetour(hGameData, MedStartAct,			"CFirstAidKit::ShouldStartAction",	false);
+		CreateDetour(hGameData, MedStartAct_Post,		"CFirstAidKit::ShouldStartAction",	true);
 		CreateDetour(hGameData, DefStartAct,			"CItemDefibrillator::ShouldStartAction", false);
 	}
 	else
@@ -301,7 +302,7 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 
 public void OnMapEnd()
 {
-	for( int i = 0; i < MaxClients; i++ )
+	for( int i = 0; i <= MaxClients; i++ )
 	{
 		delete g_hToxicTimer[i];
 		delete g_hBleedTimer[i];
@@ -374,26 +375,26 @@ void GameConVars()
 //									Events
 //==========================================================================================
 
-public void Event_Pills_Used(Event event, const char[] name, bool dontBroadcast)
+void Event_Pills_Used(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if( g_iToxicToken[client] > 0) SU_RemoveToxic(client);
 }
 
-public void Event_Adren_Used(Event event, const char[] name, bool dontBroadcast)
+void Event_Adren_Used(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if( g_iExhaustToken[client] > 0 ) SU_RemoveExhaust(client);
 	if( g_iToxicToken[client] > 0) SU_RemoveToxic(client);
 }
 
-public void Event_Heal(Event event, const char[] name, bool dontBroadcast)
+void Event_Heal(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("subject"));
 	if( g_iBleedToken[client] > 0) SU_RemoveBleed(client);
 }
 
-public void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
+void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	// !client because Common Infected trigger this event, wtf!
@@ -408,7 +409,7 @@ public void Event_Player_Death(Event event, const char[] name, bool dontBroadcas
 	SetClientData(client, false); // Removes all effects without calling API events, keep player speeds
 }
 
-public void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
+void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
 {
 	for( int i = 1; i < MaxClients; i++ )
 	{
@@ -417,9 +418,9 @@ public void Event_Round_Start(Event event, const char[] name, bool dontBroadcast
 	}
 }
 
-public Action Event_Weapon_Fire(Event event, const char[] name, bool dontBroadcast)
+void Event_Weapon_Fire(Event event, const char[] name, bool dontBroadcast)
 {
-	if( g_hRecoilScale.FloatValue == 0.0 ) return Plugin_Continue; // Ignore everything if recoil is disabled 
+	if( g_hRecoilScale.FloatValue == 0.0 ) return; // Ignore everything if recoil is disabled 
 	
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if( IsAliveSurvivor(client) && g_iExhaustToken[client] > 0 )
@@ -435,7 +436,7 @@ public Action Event_Weapon_Fire(Event event, const char[] name, bool dontBroadca
 			}
 		}
 		if( g_fRecoilStack[client] == 0 )
-			return Plugin_Continue;	// Because the loop didn't found a weapon, so is not listed, not a weapon and we don't need to do anything more
+			return;	// Because the loop didn't found a weapon, so is not listed, not a weapon and we don't need to do anything more
 			
 		if( g_fRecoilStack[client] < -50.0 ) g_fRecoilStack[client] = -50.0; // Clamp recoil to -50 value to prevent insane recoils
 		
@@ -447,11 +448,11 @@ public Action Event_Weapon_Fire(Event event, const char[] name, bool dontBroadca
 		if( g_hRecoilTimer[client] == null )
 			g_hRecoilTimer[client] = CreateTimer(0.5, Recoil_Timer, client);
 	}
-	return Plugin_Continue;
+	return;
 }
 
 // Player goes idle, if he has some condition stored, stop timers, preserve conditions (conditions will not be applied to the replacer bot)
-public Action Event_Player_Replaced(Event event, const char[] name, bool dontBroadcast)
+void Event_Player_Replaced(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("player"));
 	if( GetClientTeam(client) == 3 ) return;	// This should prevent throwing errors when a player moves to infected team
@@ -467,15 +468,31 @@ public Action Event_Player_Replaced(Event event, const char[] name, bool dontBro
 }
 
 // Survivor tries to get back the control of the character, return paused conditions
-public Action Event_Bot_Replaced(Event event, const char[] name, bool dontBroadcast)
+void Event_Bot_Replaced(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("player"));
 	if( !IsPlayerAlive(client) ) return;
 	
-	if( SU_IsFrozen(client) ) 		g_hFreezeTimer[client] = CreateTimer(g_fSaveFreeze[client], Freeze_Timer, client);
-	if( SU_IsBleeding(client) )		g_hBleedTimer[client] = CreateTimer(g_hBleedDelay.FloatValue, BleedDmg_Timer, client);
-	if( SU_IsToxic(client) )		g_hToxicTimer[client] = CreateTimer(g_hToxicDelay.FloatValue, ToxicDmg_Timer, client);
-	if( SU_IsExhausted(client) )	g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
+	if( SU_IsFrozen(client) ) 
+	{
+		delete g_hFreezeTimer[client]; // This may not be required, but its safer to delete the timer first just in case
+		g_hFreezeTimer[client] = CreateTimer(g_fSaveFreeze[client], Freeze_Timer, client);
+	}
+	if( SU_IsBleeding(client) )
+	{
+		delete g_hBleedTimer[client];
+		g_hBleedTimer[client] = CreateTimer(g_hBleedDelay.FloatValue, BleedDmg_Timer, client);
+	}
+	if( SU_IsToxic(client) )
+	{
+		delete g_hToxicTimer[client];
+		g_hToxicTimer[client] = CreateTimer(g_hToxicDelay.FloatValue, ToxicDmg_Timer, client);
+	}
+	if( SU_IsExhausted(client) )
+	{
+		delete g_hExhaustTimer[client];
+		g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
+	}
 	
 	g_fSaveFreeze[client] = 0.0;
 }
@@ -495,7 +512,7 @@ void CreateDetour(Handle gameData, DHookCallback CallBack, const char[] sName, c
 	delete hDetour;
 }
 
-public MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
+MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 {
 	// Player reviving <- pTHis
 	int client = DHookGetParam(hParams, 1); // Player revived
@@ -517,7 +534,7 @@ public MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 		DHookSetReturn(hReturn, 0);
 		return MRES_Supercede;
 	}
-	else if( aResult == Plugin_Changed)
+	if( aResult == Plugin_Changed )
 	{
 		g_fReviveDuration = g_hReviveDuration.FloatValue;
 		g_hReviveDuration.SetFloat(duration, true, false);
@@ -527,7 +544,7 @@ public MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 	return MRES_Ignored;
 }
 
-public MRESReturn OnRevive_Post(int pThis, Handle hReturn, Handle hParams)
+MRESReturn OnRevive_Post(int pThis, Handle hReturn, Handle hParams)
 {
 	if( g_bReviveChanged )
 	{
@@ -539,7 +556,7 @@ public MRESReturn OnRevive_Post(int pThis, Handle hReturn, Handle hParams)
 }
 
 // pThis -> client
-public MRESReturn StartHealing(int pThis, Handle hReturn, Handle hParams)
+MRESReturn StartHealing(int pThis, Handle hReturn, Handle hParams)
 {
 	int target = DHookGetParam(hParams, 1);
 	float duration = g_hHealDuration.FloatValue;
@@ -551,22 +568,22 @@ public MRESReturn StartHealing(int pThis, Handle hReturn, Handle hParams)
 	Call_PushFloatRef(duration);
 	Call_Finish(aResult);
 	
+	if( aResult == Plugin_Handled ) 
+	{
+		DHookSetReturn(hReturn, 0);
+		return MRES_Supercede;
+	}	
 	if( aResult == Plugin_Changed )
 	{
 		g_fHealDuration = g_hHealDuration.FloatValue;
 		g_hHealDuration.SetFloat(duration, true, false);
 		g_bHealChanged = true;
 	}
-	else if( aResult == Plugin_Handled ) 
-	{
-		DHookSetReturn(hReturn, 0);
-		return MRES_Supercede;
-	}
 	
 	return MRES_Ignored;
 }
 
-public MRESReturn StartHealing_Post(int pThis, Handle hReturn)
+MRESReturn StartHealing_Post(int pThis, Handle hReturn)
 {
 	if( g_bHealChanged )
 	{
@@ -577,7 +594,7 @@ public MRESReturn StartHealing_Post(int pThis, Handle hReturn)
 	return MRES_Ignored;
 }
 
-public MRESReturn MedStartAct(Handle hReturn, Handle hParams)
+MRESReturn MedStartAct(Handle hReturn, Handle hParams)
 {
 	int client = DHookGetParam(hParams, 2);
 	int target = DHookGetParam(hParams, 3);
@@ -599,28 +616,32 @@ public MRESReturn MedStartAct(Handle hReturn, Handle hParams)
 	Call_PushFloatRef(duration);
 	Call_Finish(aResult);
 	
+	if( aResult == Plugin_Handled )
+	{
+		DHookSetReturn(hReturn, 0);
+		return MRES_Supercede;
+	}
 	if( aResult == Plugin_Changed )
 	{
 		g_fHealDuration = g_hHealDuration.FloatValue;
 		g_hHealDuration.SetFloat(duration, true, false);
-		RequestFrame(HealFrame);
-	}
-	else if( aResult == Plugin_Handled )
-	{
-		DHookSetReturn(hReturn, 0);
-		return MRES_Supercede;
+		g_bHealChanged = true;
 	}
 	
 	return MRES_Ignored;
 }
 
-public void HealFrame()
+MRESReturn MedStartAct_Post(Handle hReturn, Handle hParams)
 {
-	g_hHealDuration.SetFloat(g_fHealDuration, true, false);
-	g_fHealDuration = -1.0;
+	if( g_bHealChanged )
+	{
+		g_hHealDuration.SetFloat(g_fHealDuration, true, false);
+		g_bHealChanged = false;
+	}
+	return MRES_Ignored;
 }
 
-public MRESReturn DefStartAct(Handle hReturn, Handle hParams)
+MRESReturn DefStartAct(Handle hReturn, Handle hParams)
 {
 	int client = DHookGetParam(hParams, 2);
 	int model = DHookGetParam(hParams, 3);
@@ -640,21 +661,23 @@ public MRESReturn DefStartAct(Handle hReturn, Handle hParams)
 		DHookSetReturn(hReturn, 0);
 		return MRES_Supercede;
 	}
-		else if( aResult == Plugin_Changed )
+	if( aResult == Plugin_Changed )
 	{
 		g_fDefibDuration = g_hDefibDuration.FloatValue;
 		g_hDefibDuration.SetFloat(duration, true, false);
-		RequestFrame(Defib_Frame);	
+		RequestFrame(Defib_Frame);
 	}
-		
+	
 	return MRES_Ignored;
 }
 
-// Need to wait one frame to set the ConVar back to its default value
-public void Defib_Frame()
+/*
+ * DefStartAct_Post doesn't work, it sets the ConVar to its original value too soon
+ * and the time override has no effect, waiting a frame instead
+ */
+void Defib_Frame()
 {
 	g_hDefibDuration.SetFloat(g_fDefibDuration, true, false);
-	g_fDefibDuration = -1.0;
 }
 
 //==========================================================================================
@@ -706,7 +729,7 @@ public Action L4D_OnGetCrouchTopSpeed(int client, float &retVal)
 }
 
 // If an exhaust postprocess is active, display only to exhausted players
-public Action PostProcess_STransmit(int entity, int client)
+Action PostProcess_STransmit(int entity, int client)
 {
 	// Kill entity on SetTransmit and wait a frame to respawn if needed (this prevents bugs)
 	if( g_iEntMustDie )
@@ -729,7 +752,7 @@ public Action PostProcess_STransmit(int entity, int client)
 }
 
 // Hook weapon switch to block attack and shoot correctly
-public Action OnWeaponSwitch(int client, int weapon)
+Action OnWeaponSwitch(int client, int weapon)
 {
 	if( !IsValidEntity(weapon) )
 		return Plugin_Continue;
@@ -913,14 +936,15 @@ void BlockPlayerAttacks(int client, const bool isBlock)
 //==========================================================================================
 //									Timers & Request Frames
 //==========================================================================================
+
 // Those timers will call themselves instead of using TIMER_REPEAT flag. This will allow to change damage tick speed if server ConVar changes
-public Action ToxicDmg_Timer(Handle timer, int client)
+Action ToxicDmg_Timer(Handle timer, int client)
 {
 	g_hToxicTimer[client] = null;
 	if( !IsValidAliveSurvivor(client) ) // In case survivor disconnects or changes teams, remove the effect
 	{
 		g_iToxicToken[client] = 0;
-		return;
+		return Plugin_Continue;
 	}
 	
 	g_iToxicToken[client]--;
@@ -932,15 +956,17 @@ public Action ToxicDmg_Timer(Handle timer, int client)
 		g_hToxicTimer[client] = CreateTimer(g_hToxicDelay.FloatValue, ToxicDmg_Timer, client);
 	
 	else SU_RemoveToxic(client);
+	
+	return Plugin_Continue;
 }
 
-public Action BleedDmg_Timer(Handle timer, int client)
+Action BleedDmg_Timer(Handle timer, int client)
 {
 	g_hBleedTimer[client] = null;
 	if( !IsValidAliveSurvivor(client) )
 	{
 		g_iBleedToken[client] = 0;
-		return;
+		return Plugin_Continue;
 	}
 	
 	g_iBleedToken[client]--;
@@ -963,35 +989,37 @@ public Action BleedDmg_Timer(Handle timer, int client)
 		Call_PushCell(client);
 		Call_Finish();
 	}
+	return Plugin_Continue;
 }
 
-public Action Recoil_Timer(Handle timer, int client)
+Action Recoil_Timer(Handle timer, int client)
 {
 	g_hRecoilTimer[client] = null;
 	if( g_fRecoilStack[client] <= -8.0 )
 	{
 		g_fRecoilStack[client] += 8.0;
 		g_hRecoilTimer[client] = CreateTimer(0.5, Recoil_Timer, client);
-		return;
+		return Plugin_Continue;
 	}
 	g_fRecoilStack[client] = 0.0;
+	return Plugin_Continue;
 }
 
 // Removes exhaust tokens over time (removes faster if the player isn't moving)
-public Action Exhaust_Timer(Handle timer, int client)
+Action Exhaust_Timer(Handle timer, int client)
 {
 	g_hExhaustTimer[client] = null;
 	if( !IsValidAliveSurvivor(client) )
 	{
 		g_iExhaustToken[client] = 0;
 		g_iEntMustDie = true;
-		return;
+		return Plugin_Continue;
 	}
 
 	if( g_iExhaustToken[client] < 1 )
 	{
 		SU_RemoveExhaust(client);
-		return;
+		return Plugin_Continue;
 	}
 
 	int iButton = GetEntProp(client, Prop_Data, "m_nButtons");
@@ -1001,18 +1029,20 @@ public Action Exhaust_Timer(Handle timer, int client)
 	else g_iExhaustToken[client] -= 2;
 	
 	g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
+	return Plugin_Continue;
 }
 
-public Action Freeze_Timer(Handle timer, int client)
+Action Freeze_Timer(Handle timer, int client)
 {
 	g_hFreezeTimer[client] = null;
-	if( !IsValidAliveSurvivor(client) ) return;
+	if( !IsValidAliveSurvivor(client) ) return Plugin_Continue;
 
 	SU_RemoveFreeze(client);
+	return Plugin_Continue;
 }
 
 // Check if another player is on exhaust mode and set again the postprocess and fog
-public void Exhaust_PostCheck()
+void Exhaust_PostCheck()
 {
 	for( int i = 1; i <= MaxClients; i++ )
 	{
@@ -1024,7 +1054,7 @@ public void Exhaust_PostCheck()
 	}
 }
 
-public void WeaponFire_Frame(DataPack pack)
+void WeaponFire_Frame(DataPack pack)
 {
 	pack.Reset();
 	int iClient = pack.ReadCell();
@@ -1157,7 +1187,7 @@ bool IsValidEntRef(int entity)
 //									Natives & Forwards
 //==========================================================================================
 
-public int Native_AddFreeze(Handle plugin, int numParams)
+int Native_AddFreeze(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) ) ThrowNativeError(SP_ERROR_PARAM, "SU_AddFreeze Error: Client %i is invalid.", client); // Call native only to valid clients
@@ -1174,9 +1204,9 @@ public int Native_AddFreeze(Handle plugin, int numParams)
 	if( g_bIsFrozen[client] == true ) 
 	{
 		// If ConVar forbiddens increase or change freeze time while placer is frozen
-		if( g_hFreezeOverride.IntValue == 0) return;
+		if( g_hFreezeOverride.IntValue == 0) return 0;
 		// If ConVar forbiddens replace freezetime if new time is lower than current freeze time
-		else if( g_hFreezeOverride.IntValue == 1 && fTime + GetGameTime() <= g_fFreezeTime[client] ) return;
+		else if( g_hFreezeOverride.IntValue == 1 && fTime + GetGameTime() <= g_fFreezeTime[client] ) return 0;
 		// If ConVar allows to stack freeze time
 		else if( g_hFreezeOverride.IntValue == 2 ) fCurrTime =  g_fFreezeTime[client] - GetGameTime();
 		// Value 3 means replace allways, not need to do anything here
@@ -1191,7 +1221,7 @@ public int Native_AddFreeze(Handle plugin, int numParams)
 	
 	if( aResult == Plugin_Changed && fHookTime >= 0.1) fTime = fHookTime; // If someone puts a bad time throug a hook, ignore it, continue.
 	
-	else if( aResult == Plugin_Handled ) return;
+	else if( aResult == Plugin_Handled ) return 0;
 		
 	if( g_bIsFrozen[client] == false ) // Not frozen client, play sound, change state, freeze player, screen color.
 	{
@@ -1206,10 +1236,10 @@ public int Native_AddFreeze(Handle plugin, int numParams)
 	delete g_hFreezeTimer[client];
 	g_fFreezeTime[client] = fTime + fCurrTime + GetGameTime();
 	g_hFreezeTimer[client] = CreateTimer(fTime + fCurrTime, Freeze_Timer, client);
-	return;
+	return 0;
 }
 
-public int Native_RemoveFreeze(Handle plugin, int numParams)
+int Native_RemoveFreeze(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_RemoveFreeze Error: Client %i is invalid.", client);
@@ -1227,9 +1257,10 @@ public int Native_RemoveFreeze(Handle plugin, int numParams)
 	Call_StartForward(ForwardFreezeEnd);
 	Call_PushCell(client);
 	Call_Finish();
+	return 0;
 }
 
-public int Native_AddBleed(Handle plugin, int numParams)
+int Native_AddBleed(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddBleed Error: Client %i is invalid.", client);
@@ -1246,8 +1277,8 @@ public int Native_AddBleed(Handle plugin, int numParams)
 	{
 		switch( g_hBleedOverride.IntValue )
 		{
-			case 0: return;
-			case 1: if( hits < g_iBleedToken[client] ) return;
+			case 0: return 0;
+			case 1: if( hits < g_iBleedToken[client] ) return 0;
 			case 2: currHits = g_iBleedToken[client];
 		}
 	}
@@ -1258,17 +1289,17 @@ public int Native_AddBleed(Handle plugin, int numParams)
 	Call_Finish(aResult);	
 
 	if( aResult == Plugin_Changed && hookHits > 0 ) hits = hookHits;
-	if( aResult == Plugin_Handled ) return;
+	if( aResult == Plugin_Handled ) return 0;
 
 	g_iBleedToken[client] = hits + currHits;
 	
 	delete g_hBleedTimer[client];
 	g_hBleedTimer[client] = CreateTimer(g_hBleedDelay.FloatValue, BleedDmg_Timer, client);
 
-	return;
+	return 0;
 }
 
-public int Native_RemoveBleed(Handle plugin, int numParams)
+int Native_RemoveBleed(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_RemoveBleed Error: Client %i is invalid.", client);
@@ -1284,7 +1315,7 @@ public int Native_RemoveBleed(Handle plugin, int numParams)
 	Call_Finish();
 }
 
-public int Native_AddToxic(Handle plugin, int numParams)
+int Native_AddToxic(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddToxic Error: Client %i is invalid.", client);
@@ -1322,7 +1353,7 @@ public int Native_AddToxic(Handle plugin, int numParams)
 	return;
 }
 
-public int Native_RemoveToxic(Handle plugin, int numParams) 
+int Native_RemoveToxic(Handle plugin, int numParams) 
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_RemoveToxic Error: Client %i is invalid.", client);
@@ -1337,9 +1368,10 @@ public int Native_RemoveToxic(Handle plugin, int numParams)
 	Call_StartForward(ForwardToxicEnd);
 	Call_PushCell(client);
 	Call_Finish();
+	return 0;
 }
 
-public int Native_SetSpeed(Handle plugin, int numParams)
+int Native_SetSpeed(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_SetSpeed Error: Client %i is invalid.", client);
@@ -1388,10 +1420,10 @@ public int Native_SetSpeed(Handle plugin, int numParams)
 		}
 		default: ThrowNativeError(SP_ERROR_PARAM, "SU_SetSpeed Error: Invalid speed type.");
 	}
-	return;
+	return 0;
 }
 
-public int Native_AddExhaust(Handle plugin, int numParams)
+int Native_AddExhaust(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Client %i is invalid.", client);
@@ -1408,8 +1440,8 @@ public int Native_AddExhaust(Handle plugin, int numParams)
 	{
 		switch( g_hExhaustOverride.IntValue )
 		{
-			case 0: return;
-			case 1: if( iTokens < g_iExhaustToken[client] ) return;
+			case 0: return 0;
+			case 1: if( iTokens < g_iExhaustToken[client] ) return 0;
 			case 2: iCurrTokens = g_iExhaustToken[client];
 		}
 	}
@@ -1421,16 +1453,16 @@ public int Native_AddExhaust(Handle plugin, int numParams)
 	Call_Finish(aResult);
 	
 	if( aResult == Plugin_Changed && iHookTokens > 0 ) iTokens = iHookTokens;
-	if( aResult == Plugin_Handled ) return;
+	if( aResult == Plugin_Handled ) return 0;
 	
 	if( !IsValidEntRef(g_iPostProcess) ) CreatePostProcess();
 	g_iExhaustToken[client] = iHookTokens + iCurrTokens;
 	delete g_hExhaustTimer[client];
 	g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
-	return;
+	return 0;
 }
 
-public int Native_RemoveExhaust(Handle plugin, int numParams)
+int Native_RemoveExhaust(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_RemoveExhaust Error: Client %i is invalid.", client);
@@ -1445,9 +1477,10 @@ public int Native_RemoveExhaust(Handle plugin, int numParams)
 	Call_StartForward(ForwardExhaustEnd);
 	Call_PushCell(client);
 	Call_Finish();
+	return 0;
 }
 
-public int Native_GetFreeze(Handle plugin, int numParams)
+int Native_GetFreeze(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) ) ThrowNativeError(SP_ERROR_PARAM, "SU_IsFrozen Error: Client %i is invalid.", client);
@@ -1458,7 +1491,7 @@ public int Native_GetFreeze(Handle plugin, int numParams)
 	return g_bIsFrozen[client];
 }
 
-public any Native_GetSpeed(Handle plugin, int numParams)
+any Native_GetSpeed(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) ) ThrowNativeError(SP_ERROR_PARAM, "SU_GetSpeed Error: Client %i is not in game.", client);
@@ -1482,7 +1515,7 @@ public any Native_GetSpeed(Handle plugin, int numParams)
 	return 0.0;
 }
 
-public int Native_GetBleed(Handle plugin, int numParams)
+int Native_GetBleed(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) ) ThrowNativeError(SP_ERROR_PARAM, "SU_IsBleeding Error: Client %i is invalid.", client);
@@ -1491,7 +1524,7 @@ public int Native_GetBleed(Handle plugin, int numParams)
 	return g_iBleedToken[client] > 0 ? true : false;
 }
 
-public int Native_GetToxic(Handle plugin, int numParams)
+int Native_GetToxic(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) ) ThrowNativeError(SP_ERROR_PARAM, "SU_IsToxic Error: Client %i is invalid.", client);
@@ -1500,7 +1533,7 @@ public int Native_GetToxic(Handle plugin, int numParams)
 	return g_iToxicToken[client] > 0 ? true : false;
 }
 
-public int Native_GetExhaust(Handle plugin, int numParams)
+int Native_GetExhaust(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) ) ThrowNativeError(SP_ERROR_PARAM, "SU_IsExhausted Error: Client %i is invalid.", client);
@@ -1512,6 +1545,10 @@ public int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.3.1	(16-Jun-2022)
+		- Fixed some possible bugs with timers.
+		- Removed public function declarations where the weren't needed.
+		- In L4D2, medkit ConVar is reset with a post DHook instead of using a RequestFrame.
 * 1.3	(01-Feb-2022)
 		- Fixed adrenaline and scoping movement speed being overrided by run or limping speed.
 		- Both adrenaline and scoping movement speed are controlled by CVar and accessed by Natives.
