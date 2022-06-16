@@ -3,7 +3,7 @@
 ----------------------------------------------------------------------------------------------
 *	Author	:	Eärendil
 *	Descrp	:	Adds chat notifications to players when they have a change in their condition
-*	Version :	1.0.2
+*	Version :	1.0.3
 *	Link	:	https://forums.alliedmods.net/showthread.php?t=335683
 ----------------------------------------------------------------------------------------------
 ==============================================================================================*/
@@ -14,7 +14,7 @@
 #include <sourcemod>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION "1.0.2"
+#define PLUGIN_VERSION "1.0.3"
 
 #define CHAT_TAG	"\x04[\x05SU\x04] \x01"
 
@@ -61,14 +61,14 @@ public Action SU_OnFreeze(int client, float &time)
 	if( !g_hAllow.BoolValue ) return Plugin_Continue;
 	if( !SU_IsFrozen(client) ) // This status will be applied AFTER the native ends, so it checks if the survivor is already frozen
 	{
-		char sBuffer[128];
-		StrCat(sBuffer, sizeof(sBuffer), "You have been frozen.");
+		char sBuffer[] = "You have been frozen.";
 		DataPack hPack = new DataPack();
 		RequestFrame(GlobalForward_Frame, hPack); // Check one frame after, if the native has been blocked by another plugin, dont print any message
-		hPack.WriteCell(client); 
+		hPack.WriteCell(GetClientSerial(client)); // Use client serial to prevent errors, thanks to Silvers for pointing that
 		hPack.WriteCell(GF_FREEZE);
 		hPack.WriteString(sBuffer);
 	}
+	
 	return Plugin_Continue;
 }
 
@@ -77,11 +77,10 @@ public Action SU_OnToxic(int client, int &amount)
 	if( !g_hAllow.BoolValue ) return Plugin_Continue;
 	if( !SU_IsToxic(client) )
 	{
-		char sBuffer[128];
-		StrCat(sBuffer, sizeof(sBuffer), "You have been intoxicated. Use pain pills or adrenaline to cure the intoxication.");
+		char sBuffer[] = "You have been intoxicated. Use pain pills or adrenaline to cure the intoxication.";
 		DataPack hPack = new DataPack();
 		RequestFrame(GlobalForward_Frame, hPack);
-		hPack.WriteCell(client);
+		hPack.WriteCell(GetClientSerial(client));
 		hPack.WriteCell(GF_TOXIC);
 		hPack.WriteString(sBuffer);
 	}
@@ -94,14 +93,14 @@ public Action SU_OnBleed(int client, int &amount)
 	if( !g_hAllow.BoolValue ) return Plugin_Continue;
 	if( !SU_IsBleeding(client) )
 	{
-		char sBuffer[128];
-		StrCat(sBuffer, sizeof(sBuffer), "You are bleeding. Use a medkit to stop the bleed.");
+		char sBuffer[] = "You are bleeding. Use a medkit to stop the bleed.";
 		DataPack hPack = new DataPack();
 		RequestFrame(GlobalForward_Frame, hPack);
-		hPack.WriteCell(client);
+		hPack.WriteCell(GetClientSerial(client));
 		hPack.WriteCell(GF_BLEED);
 		hPack.WriteString(sBuffer);
-	}		
+	}	
+	
 	return Plugin_Continue;
 }
 
@@ -110,8 +109,7 @@ public Action SU_OnExhaust(int client)
 	if( !g_hAllow.BoolValue ) return Plugin_Continue;
 	if( !SU_IsExhausted(client) )
 	{
-		char sBuffer[128];
-		StrCat(sBuffer, sizeof(sBuffer), "You are exhausted. Use adrenaline to recover inmediately.");
+		char sBuffer[] = "You are exhausted. Use adrenaline to recover inmediately.";
 		DataPack hPack = new DataPack();
 		RequestFrame(GlobalForward_Frame, hPack);
 		hPack.WriteCell(client);
@@ -149,14 +147,16 @@ public void SU_OnExhaustEnd(int client)
 	PrintToChat(client, "%s Exhaustion ended.", CHAT_TAG);
 }
 
-public void GlobalForward_Frame(DataPack hPack)
+void GlobalForward_Frame(DataPack hPack)
 {
 	hPack.Reset();
-	int client = hPack.ReadCell();
+	int client = GetClientFromSerial(hPack.ReadCell());
 	int gf_caller = hPack.ReadCell();
 	char sOut[128];
 	hPack.ReadString(sOut, sizeof(sOut));
 	delete hPack;
+	// Invalid client, don't print the message
+	if( !client ) return;
 	switch( gf_caller )
 	{
 		case GF_FREEZE: 	if( SU_IsFrozen(client) )		PrintToChat(client, "%s %s", CHAT_TAG, sOut);
@@ -169,6 +169,9 @@ public void GlobalForward_Frame(DataPack hPack)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.0.3 (16-Jun-2022)
+		- Datapacks now send ClientSerial instead of raw client number.
+		- Strings now have the text assigned when declared instead of using StrCat.
 * 1.0.2 (30-Dec-2021)
 		- Fixed exhaustion notification not being showed properly.
 * 1.0.1	(25-Dec-2021)
