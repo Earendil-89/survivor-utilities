@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.3.1                                                           *
+ *  Version     :   1.3.2                                                           *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -25,11 +25,11 @@
  *                                                                                  *
  *  Additional info:                                                                *
  *   - This speed method is not perfect, speed doesn't increase linearly.           *
- *   - Recomended values between 0.5 and 1.75 of player speed.                      *
+ *   - Recommended values between 0.5 and 1.75 of player speed.                     *
  *   - Higher or lower values will lose linearly easily and players will notice     *
  *      weird speed changes while moving.                                           *
  *  Special thanks:                                                                 *
- *   - SilverShot for helipng with the postprocess and fog_volume. Also for advices *
+ *   - SilverShot for helping with the postprocess and fog_volume. Also for advices *
  *      using natives and GlobalForwards.                                           *
  * ================================================================================ *
  */
@@ -45,7 +45,7 @@
 #include <survivorutilities>
 #include <profiler>
 
-#define PLUGIN_VERSION	"1.3.1"
+#define PLUGIN_VERSION	"1.3.2"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -429,10 +429,10 @@ void Event_Weapon_Fire(Event event, const char[] name, bool dontBroadcast)
 		event.GetString("weapon", sBuffer, sizeof(sBuffer));
 		for( int i = 0; i < sizeof(g_sWeaponRecoils); i ++ )
 		{
-			if( StrContains(sBuffer, g_sWeaponRecoils[i], false) != -1 )
+			if( StrContains(sBuffer, g_sWeaponRecoils[i]) != -1 )
 			{
 				g_fRecoilStack[client] -= g_fWeaponRecoils[i] * g_hRecoilScale.FloatValue; // Increase the stacked recoil
-				break; // Stop loop because string is readed in a way it could find another match with some weapon, so first match is always the desired weapon	
+				break; // Stop loop because string is read in a way it could find another match with some weapon, so first match is always the desired weapon	
 			}
 		}
 		if( g_fRecoilStack[client] == 0 )
@@ -440,11 +440,8 @@ void Event_Weapon_Fire(Event event, const char[] name, bool dontBroadcast)
 			
 		if( g_fRecoilStack[client] < -50.0 ) g_fRecoilStack[client] = -50.0; // Clamp recoil to -50 value to prevent insane recoils
 		
-		// I'm not sure if I use g_fRecoilStack[client] directly it could be changed by timer before the Callback is executed, so I use DataPack for safety
-		DataPack hPack = new DataPack();
-		RequestFrame(WeaponFire_Frame, hPack);
-		hPack.WriteCell(client);
-		hPack.WriteFloat(g_fRecoilStack[client]);
+		// Call the push one frame after the shot, if we push player in this function we will decrease the accuracy of all shots
+		RequestFrame(WeaponFire_Frame, client);
 		if( g_hRecoilTimer[client] == null )
 			g_hRecoilTimer[client] = CreateTimer(0.5, Recoil_Timer, client);
 	}
@@ -653,9 +650,7 @@ MRESReturn DefStartAct(Handle hReturn, Handle hParams)
 	Call_PushCell(model);
 	Call_PushFloatRef(duration);
 	Call_Finish(aResult);
-	
-//	if( duration < 0.0 ) duration = 0.0; // Don't clamp since for some reason ConVar allows negative values !?
-	
+		
 	if( aResult == Plugin_Handled )
 	{
 		DHookSetReturn(hReturn, 0);
@@ -695,6 +690,7 @@ public Action L4D_OnGetRunTopSpeed(int client, float &retVal)
 	
 	if( g_iExhaustToken[client] > 0 && g_fExhaustSpeed[client] < fBaseSpeed && iStatus != STATUS_ADRENALINE ) // In case survivor is exhausted and exhaust speed is lower than current speed...
 		fBaseSpeed = g_fExhaustSpeed[client];
+	
 	
 	retVal = fBaseSpeed;
 	return Plugin_Handled;
@@ -780,7 +776,7 @@ int GetSurvivorStatus(int client)
 	else return STATUS_NORMAL;
 }
 
-// Function from drug effect, modifyed
+// Function from drug effect, modified
 void ScreenColor(int client, int color[4], int flags)
 {
 	if( !client || IsFakeClient(client) ) return;
@@ -862,8 +858,8 @@ bool IsValidClient(int client)
 	return IsClientInGame(client);
 }
 
-// Resets all the client related variables on death/round restart/mapchange
-void SetClientData(int client, bool fullReset) // FullReset is only called when player connects or mapchanges (prevents speed heritage from other player)
+// Resets all the client related variables on death/round restart/map change
+void SetClientData(int client, bool fullReset) // FullReset is only called when player connects or map changes (prevents speed heritage from other player)
 {
 	// Delete timer handles
 	delete g_hToxicTimer[client];
@@ -877,14 +873,14 @@ void SetClientData(int client, bool fullReset) // FullReset is only called when 
 	g_iToxicToken[client] = 0;
 	g_fSaveFreeze[client] = 0.0;
 	
-	// Set client speeds to default (only after join/disconnect, round restart or mapchange)
+	// Set client speeds to default (only after join/disconnect, round restart or map change)
 	if( fullReset )
 	{
 		g_fRunSpeed[client] = g_hRunSpeed.FloatValue;
 		g_fCrouchSpeed[client] = g_hCrouchSpeed.FloatValue;
 		g_fWalkSpeed[client] = g_hWalkSpeed.FloatValue;
 		g_fCritSpeed[client] = g_hCritSpeed.FloatValue;
-		g_fWaterSpeed[client] = g_hWalkSpeed.FloatValue;
+		g_fWaterSpeed[client] = g_hWaterSpeed.FloatValue;
 		g_fExhaustSpeed[client] = g_hExhaustSpeed.FloatValue;
 	}
 	// Disable all screen effects
@@ -1041,7 +1037,7 @@ Action Freeze_Timer(Handle timer, int client)
 	return Plugin_Continue;
 }
 
-// Check if another player is on exhaust mode and set again the postprocess and fog
+// Check if another player is on exhaust mode and set again the post process and fog
 void Exhaust_PostCheck()
 {
 	for( int i = 1; i <= MaxClients; i++ )
@@ -1054,15 +1050,11 @@ void Exhaust_PostCheck()
 	}
 }
 
-void WeaponFire_Frame(DataPack pack)
+void WeaponFire_Frame(int client)
 {
-	pack.Reset();
-	int iClient = pack.ReadCell();
-	float fPower = pack.ReadFloat();
-	delete pack;
 	float vForce[3];
-	vForce[0] = fPower, vForce[1] = GetRandomFloat(15.0, -15.0) * fPower / 50.0;
-	SetEntPropVector(iClient, Prop_Send, "m_vecPunchAngle", vForce);
+	vForce[0] = g_fRecoilStack[client], vForce[1] = GetRandomFloat(15.0, -15.0) * g_fRecoilStack[client] / 50.0;
+	SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", vForce);
 }
 
 // ====================================================================================================
@@ -1203,13 +1195,13 @@ int Native_AddFreeze(Handle plugin, int numParams)
 	// First check if the player is frozen to stop silently the function (avoid unnecesary calls if nothing has to happen!)
 	if( g_bIsFrozen[client] == true ) 
 	{
-		// If ConVar forbiddens increase or change freeze time while placer is frozen
+		// If ConVar forbids increase or change freeze time while placer is frozen
 		if( g_hFreezeOverride.IntValue == 0) return 0;
-		// If ConVar forbiddens replace freezetime if new time is lower than current freeze time
+		// If ConVar allows replace freeze time only if the new time is higher than current freeze time
 		else if( g_hFreezeOverride.IntValue == 1 && fTime + GetGameTime() <= g_fFreezeTime[client] ) return 0;
 		// If ConVar allows to stack freeze time
 		else if( g_hFreezeOverride.IntValue == 2 ) fCurrTime =  g_fFreezeTime[client] - GetGameTime();
-		// Value 3 means replace allways, not need to do anything here
+		// Value 3 means replace always, not need to do anything here
 	}
 	
 	// Hook function
@@ -1219,7 +1211,7 @@ int Native_AddFreeze(Handle plugin, int numParams)
 	Call_PushFloatRef(fHookTime);
 	Call_Finish(aResult);
 	
-	if( aResult == Plugin_Changed && fHookTime >= 0.1) fTime = fHookTime; // If someone puts a bad time throug a hook, ignore it, continue.
+	if( aResult == Plugin_Changed && fHookTime >= 0.1) fTime = fHookTime; // If someone puts a bad time through a hook, ignore it, continue.
 	
 	else if( aResult == Plugin_Handled ) return 0;
 		
@@ -1429,6 +1421,7 @@ int Native_AddExhaust(Handle plugin, int numParams)
 	if( !IsValidClient(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Client %i is invalid.", client);
 	if( !IsPlayerAlive(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Client %i is not alive.", client);
 	if( GetClientTeam(client) != 2 )	ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Client %i is not a survivor.", client);
+	// Because adrenaline would override some exhaustion effects and superpose others, throw an error to prevent any other plugin to call this under adrenaline
 	if( GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0 )
 		ThrowNativeError(SP_ERROR_NATIVE, "SU_AddExhaust Error: Can't implement exhaustion on Client %i because is under adrenaline effect.", client);
 
@@ -1485,7 +1478,7 @@ int Native_GetFreeze(Handle plugin, int numParams)
 	int client = GetNativeCell(1);
 	if( !IsValidClient(client) ) ThrowNativeError(SP_ERROR_PARAM, "SU_IsFrozen Error: Client %i is invalid.", client);
 	// Here is not needed to throw an error with dead survivor, since you only try to get the player stats, this will report that the player is not freeze BECAUSE IT'S DEAD
-	// But throw a Native Error if client is not a survivor, this will thell the prograrmer it's trying to get info from wrong client
+	// But throw a Native Error if client is not a survivor, this will tell the programmer it's trying to get info from wrong client
 	if( GetClientTeam(client) != 2 ) ThrowNativeError(SP_ERROR_PARAM, "SU_GetSpeed Error: Client %i is not survivor.", client);
 
 	return g_bIsFrozen[client];
@@ -1545,6 +1538,9 @@ int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.3.2 (19-Jun-2022)
+		- Fixed water speed not getting settings from the right ConVar.
+		- Minor optimizations.
 * 1.3.1	(16-Jun-2022)
 		- Fixed some possible bugs with timers.
 		- Removed public function declarations where the weren't needed.
