@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.3.2                                                           *
+ *  Version     :   1.3.4                                                           *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -45,7 +45,7 @@
 #include <survivorutilities>
 #include <profiler>
 
-#define PLUGIN_VERSION	"1.3.2"
+#define PLUGIN_VERSION	"1.3.4"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -302,7 +302,7 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 
 public void OnMapEnd()
 {
-	for( int i = 0; i <= MaxClients; i++ )
+	for( int i = 1; i <= MaxClients; i++ )
 	{
 		delete g_hToxicTimer[i];
 		delete g_hBleedTimer[i];
@@ -411,7 +411,7 @@ void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
 
 void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
 {
-	for( int i = 1; i < MaxClients; i++ )
+	for( int i = 1; i <= MaxClients; i++ )
 	{
 		if( IsClientInGame(i) )
 			SetClientData(i, true); // Reset ALL data, even speeds on round start
@@ -468,7 +468,7 @@ void Event_Player_Replaced(Event event, const char[] name, bool dontBroadcast)
 void Event_Bot_Replaced(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("player"));
-	if( !IsPlayerAlive(client) ) return;
+	if( !IsPlayerAlive(client) || GetClientTeam(client) != 2 ) return;
 	
 	if( SU_IsFrozen(client) ) 
 	{
@@ -684,7 +684,7 @@ public Action L4D_OnGetRunTopSpeed(int client, float &retVal)
 	if( !IsAliveSurvivor(client) ) return Plugin_Continue; // Ignore infected and dead survivors
 	
 	int iStatus = GetSurvivorStatus(client);	
-	float fBaseSpeed = GetPlayerSpeed(client, iStatus, g_fRunSpeed[client]);
+	float fBaseSpeed = GetPlayerSpeed(client, iStatus, g_fRunSpeed[client], true);
 	
 	if( fBaseSpeed < 0.0 ) return Plugin_Continue; // Ignore negative speeds
 	
@@ -813,7 +813,7 @@ void ScreenColor(int client, int color[4], int flags)
 }
 
 // Compare speeds and get the lowest speed in the player situation
-float GetPlayerSpeed(int client, int playerStatus, float fSpeed)
+float GetPlayerSpeed(int client, int playerStatus, float fSpeed, bool isRunning = false)
 {
 	if( GetEntityFlags(client) & FL_INWATER ) // This is the only way to check properly if a survivor is on water
 	{
@@ -822,18 +822,20 @@ float GetPlayerSpeed(int client, int playerStatus, float fSpeed)
 	}
 	
 	// Attempt to nerf survivor moving speed if scoping, this is like survivor is walking and thats why blocks adrenaline powerup
-	if( GetEntPropEnt(client, Prop_Send, "m_hZoomOwner") != -1 ) {
+	if( GetEntPropEnt(client, Prop_Send, "m_hZoomOwner") != -1 )
+	{
 		fSpeed = fSpeed < g_fScopeSpeed[client] ? fSpeed : g_fScopeSpeed[client];
+		isRunning = false;
 	}
 	// Default game behaviour, when survivor injects adren, hes able to rush in any situation
-	else if( playerStatus == STATUS_ADRENALINE )
+	else if( playerStatus == STATUS_ADRENALINE && isRunning )
 		return g_fAdrenRunSpeed[client];
 	
 	switch( playerStatus )
 	{
 		case STATUS_INCAP: return -1.0; // If this function returns a negative value, the DHook will do nothing, which is logical if survivor is incapped
 		case STATUS_NORMAL: return fSpeed;
-		case STATUS_LIMP: return fSpeed < g_fLimpSpeed[client] ? fSpeed : g_fLimpSpeed[client];	 // I just learned ternary operators, they are great :D
+		case STATUS_LIMP: return fSpeed < g_fLimpSpeed[client] ? fSpeed : g_fLimpSpeed[client];
 		case STATUS_CRITICAL: return fSpeed < g_fCritSpeed[client] ? fSpeed : g_fCritSpeed[client];
 	}
 	
@@ -1538,48 +1540,52 @@ int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.3.4 (28-Jun-2022)
+    - Fixed errors when bot control transferred between bots and players in infected team.
+* 1.3.3 (22-Jun-2022)
+    - Fixed a bug where adrenaline speed overrided crouch, walk and scope speeds.
 * 1.3.2 (19-Jun-2022)
-		- Fixed water speed not getting settings from the right ConVar.
-		- Minor optimizations.
+    - Fixed water speed not getting settings from the right ConVar.
+    - Minor optimizations.
 * 1.3.1	(16-Jun-2022)
-		- Fixed some possible bugs with timers.
-		- Removed public function declarations where the weren't needed.
-		- In L4D2, medkit ConVar is reset with a post DHook instead of using a RequestFrame.
+    - Fixed some possible bugs with timers.
+    - Removed public function declarations where the weren't needed.
+    - In L4D2, medkit ConVar is reset with a post DHook instead of using a RequestFrame.
 * 1.3	(01-Feb-2022)
-		- Fixed adrenaline and scoping movement speed being overrided by run or limping speed.
-		- Both adrenaline and scoping movement speed are controlled by CVar and accessed by Natives.
-		- SU_AddExhaust now throws an error if client is under adrenaline effect. This prevents API consistency errors.
-		- If speed ConVars are changed ingame, survivor custom speeds will scale proportionally instead of being overrided.
+    - Fixed adrenaline and scoping movement speed being overrided by run or limping speed.
+    - Both adrenaline and scoping movement speed are controlled by CVar and accessed by Natives.
+    - SU_AddExhaust now throws an error if client is under adrenaline effect. This prevents API consistency errors.
+    - If speed ConVars are changed ingame, survivor custom speeds will scale proportionally instead of being overrided.
 * 1.2.2 (23-Jan-2022)
-		- Exhaustion extra recoil added to survivors now can be scaled or disabled by ConVar(thanks to Shao for the request).
+    - Exhaustion extra recoil added to survivors now can be scaled or disabled by ConVar(thanks to Shao for the request).
 * 1.2.1 (19-Jan-2022)
-		- Fixed errors when shoving a common infected with first aid kit in L4D2 (thanks to Sev for reporting).
-		- Fixed fakely triggering of SU_OnHeal when a survivor shoves an special infected with first aid kit in L4D2.
+    - Fixed errors when shoving a common infected with first aid kit in L4D2 (thanks to Sev for reporting).
+    - Fixed fakely triggering of SU_OnHeal when a survivor shoves an special infected with first aid kit in L4D2.
 * 1.2	(18-Jan-2022)
-		- Added detouring for game functions:
-			* Healing.
-			* Reviving survivors.
-			* Defib survivors (L4D2)
-		- Detours allow to modify backpack usage, healing and revive duration, and block events.
-		- Minor optimizations.
+    - Added detouring for game functions:
+        * Healing.
+        * Reviving survivors.
+        * Defib survivors (L4D2)
+    - Detours allow to modify backpack usage, healing and revive duration, and block events.
+    - Minor optimizations.
 * 1.1.2 (09-Jan-2022)
-		- Blocked plugin error messages when a survivor joins infected team (thanks to Sev for reporting).
+    - Blocked plugin error messages when a survivor joins infected team (thanks to Sev for reporting).
 * 1.1.1 (01-Jan-2022)
-		- Fixed timer Handle errors.
+    - Fixed timer Handle errors.
 * 1.1	(30-Dec-2021)
-		- Fixed bug where survivor limp speed was not being applied.
-		- Survivor speeds are correctly reset on round restart.
-		- Improved native error trhow messages.
-		- Survivor status now is paused if the survivor goes idle, it will be resumed after survivor joins back.
-		- SU_AddExhaust now requires a second parameter, token amount (read survivorutilities.inc for more info).
-		- SU_AddExhaust now allows to stack exhaust tokens or override, like the other effects.
+    - Fixed bug where survivor limp speed was not being applied.
+    - Survivor speeds are correctly reset on round restart.
+    - Improved native error trhow messages.
+    - Survivor status now is paused if the survivor goes idle, it will be resumed after survivor joins back.
+    - SU_AddExhaust now requires a second parameter, token amount (read survivorutilities.inc for more info).
+    - SU_AddExhaust now allows to stack exhaust tokens or override, like the other effects.
 * 1.0.3 (25-Dec-2021)
-		- Removed debugging messages.
+    - Removed debugging messages.
 * 1.0.2 (25-Dec-2021)
-		- Changed default override values from 1 to 2.
-		- Fixed ConVar descriptions.
+    - Changed default override values from 1 to 2.
+    - Fixed ConVar descriptions.
 * 1.0.1	(25-Dec-2021)
-		- Fixed missing config file.
+    - Fixed missing config file.
 * 1.0	(25-Dec-2021)
-		- Initial release.
+    - Initial release.
 ============================================================================================*/
