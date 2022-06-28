@@ -468,7 +468,7 @@ void Event_Player_Replaced(Event event, const char[] name, bool dontBroadcast)
 void Event_Bot_Replaced(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("player"));
-	if( !IsPlayerAlive(client) || GetClientTeam(client) != 2 ) return;
+	if( !IsPlayerAlive(client) || GetClientTeam(client) != 2 ) return; // Prevent errors on infected team
 	
 	if( SU_IsFrozen(client) ) 
 	{
@@ -1541,7 +1541,7 @@ int Native_GetExhaust(Handle plugin, int numParams)
 									Changelog
 ----------------------------------------------------------------------------------------------
 * 1.3.4 (28-Jun-2022)
-    - Fixed errors when bot control transferred between bots and players in infected team.
+    - Fixed errors when zombie control transferred between bots and players in infected team.
 * 1.3.3 (22-Jun-2022)
     - Fixed a bug where adrenaline speed overrided crouch, walk and scope speeds.
 * 1.3.2 (19-Jun-2022)
