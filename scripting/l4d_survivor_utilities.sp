@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.3.4                                                           *
+ *  Version     :   1.3.5                                                           *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -45,7 +45,7 @@
 #include <survivorutilities>
 #include <profiler>
 
-#define PLUGIN_VERSION	"1.3.4"
+#define PLUGIN_VERSION	"1.3.5"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -765,7 +765,7 @@ int GetSurvivorStatus(int client)
 {
 	if( GetEntProp(client, Prop_Send, "m_isIncapacitated") == 1 ) return STATUS_INCAP;
 
-	if( GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0 ) return STATUS_ADRENALINE;
+	if( g_bL4D2 && GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0 ) return STATUS_ADRENALINE;
 	float fAbsHealth = GetAbsHealth(client);
 	if( fAbsHealth >= 1.0 && fAbsHealth < g_fLimpHealth )
 	{
@@ -1540,6 +1540,8 @@ int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
+* 1.3.5	(08-Sep-2022)
+	- Fixed error when attempting to check adrenaline in L4D games (thanks to Dominatez for reporting).
 * 1.3.4 (28-Jun-2022)
     - Fixed errors when zombie control transferred between bots and players in infected team.
 * 1.3.3 (22-Jun-2022)
