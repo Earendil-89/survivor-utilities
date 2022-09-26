@@ -15,18 +15,13 @@
 #include <survivorutilities>
 
 #define PLUGIN_VERSION "1.0.3"
-
+#define TIME_EXTEND 2
 #define CHAT_TAG	"\x04[\x05SU\x04] \x01"
 
-ConVar g_hAllow, g_hEnd;
+ConVar g_hAllow;
+ConVar g_hEnd;
 
-enum
-{
-	GF_FREEZE,
-	GF_TOXIC,
-	GF_BLEED,
-	GF_EXHAUST
-};
+bool g_bL4D2;
 
 public Plugin myinfo =
 {
@@ -39,7 +34,10 @@ public Plugin myinfo =
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
-	if (GetEngineVersion() != Engine_Left4Dead2 && GetEngineVersion() != Engine_Left4Dead)
+	if( GetEngineVersion() == Engine_Left4Dead2 )
+		g_bL4D2 = true;
+
+	else if( GetEngineVersion() != Engine_Left4Dead )
 	{
 		strcopy(error, err_max, "Plugin only supports Left 4 Dead 1 & 2");
 		return APLRes_SilentFailure;
@@ -52,126 +50,82 @@ public void OnPluginStart()
 	// Not adding a convar for version, this is a basic extension of the main plugin
 	g_hAllow =		CreateConVar("sm_su_notifications_enable",		"1",		"0 = Plugin Off. 1 = Plugin On.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_hEnd =		CreateConVar("sm_su_notification_end",			"1",		"Notify when condition ends. 1 = On, 0 = Off.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	
+
 	AutoExecConfig(true, "l4d_su_notifications");
 }
 
-public Action SU_OnFreeze(int client, float &time)
+public void SU_OnFreeze_Post(int client, float time, const bool overload)
 {
-	if( !g_hAllow.BoolValue ) return Plugin_Continue;
-	if( !SU_IsFrozen(client) ) // This status will be applied AFTER the native ends, so it checks if the survivor is already frozen
-	{
-		char sBuffer[] = "You have been frozen.";
-		DataPack hPack = new DataPack();
-		RequestFrame(GlobalForward_Frame, hPack); // Check one frame after, if the native has been blocked by another plugin, dont print any message
-		hPack.WriteCell(GetClientSerial(client)); // Use client serial to prevent errors, thanks to Silvers for pointing that
-		hPack.WriteCell(GF_FREEZE);
-		hPack.WriteString(sBuffer);
-	}
+	if( !g_hAllow.BoolValue || overload ) return;	
 	
-	return Plugin_Continue;
+	PrintToChat(client, "%sYou have been frozen.", CHAT_TAG);
 }
 
-public Action SU_OnToxic(int client, int &amount)
+public void SU_OnToxic_Post(int client, int amount, const bool overload)
 {
-	if( !g_hAllow.BoolValue ) return Plugin_Continue;
-	if( !SU_IsToxic(client) )
-	{
-		char sBuffer[] = "You have been intoxicated. Use pain pills or adrenaline to cure the intoxication.";
-		DataPack hPack = new DataPack();
-		RequestFrame(GlobalForward_Frame, hPack);
-		hPack.WriteCell(GetClientSerial(client));
-		hPack.WriteCell(GF_TOXIC);
-		hPack.WriteString(sBuffer);
-	}
+	if( !g_hAllow.BoolValue || overload ) return;	
+	
+	PrintToChat(client, "%sYou have been intoxicated.", CHAT_TAG);
 		
-	return Plugin_Continue;
+	char pillsMsg[32];
+	if( g_bL4D2 ) pillsMsg = "pain pills or adrenaline";
+	else pillsMsg = "pain pills";
+
+	PrintToChat(client, "%sUse %s to stop the intoxication.", CHAT_TAG, pillsMsg);
 }
 
-public Action SU_OnBleed(int client, int &amount)
+public void SU_OnBleed_Post(int client, int amount, const bool overload)
 {
-	if( !g_hAllow.BoolValue ) return Plugin_Continue;
-	if( !SU_IsBleeding(client) )
-	{
-		char sBuffer[] = "You are bleeding. Use a medkit to stop the bleed.";
-		DataPack hPack = new DataPack();
-		RequestFrame(GlobalForward_Frame, hPack);
-		hPack.WriteCell(GetClientSerial(client));
-		hPack.WriteCell(GF_BLEED);
-		hPack.WriteString(sBuffer);
-	}	
+	if( !g_hAllow.BoolValue || overload ) return;
 	
-	return Plugin_Continue;
+	PrintToChat(client, "%sYou are bleeding.", CHAT_TAG);
+	PrintToChat(client, "%sUse a medkit to stop the bleeding.", CHAT_TAG);
 }
 
-public Action SU_OnExhaust(int client)
+public void SU_OnExhaust_Post(int client, int amount, const bool overload)
 {
-	if( !g_hAllow.BoolValue ) return Plugin_Continue;
-	if( !SU_IsExhausted(client) )
-	{
-		char sBuffer[] = "You are exhausted. Use adrenaline to recover inmediately.";
-		DataPack hPack = new DataPack();
-		RequestFrame(GlobalForward_Frame, hPack);
-		hPack.WriteCell(client);
-		hPack.WriteCell(GF_EXHAUST);
-		hPack.WriteString(sBuffer);
-	}		
-	return Plugin_Continue;
+	if( !g_hAllow.BoolValue || overload ) return;
+	
+	PrintToChat(client, "%sYou are exhausted.", CHAT_TAG);
+	if( g_bL4D2 )
+		PrintToChat(client, "%sUse adrenaline to stop the exhaustion.", CHAT_TAG);
 }
 
 public void SU_OnFreezeEnd(int client)
 {
 	if( !g_hAllow.BoolValue || !g_hEnd.BoolValue ) return;
 	
-	PrintToChat(client, "%s Freeze effect ended.", CHAT_TAG);
+	PrintToChat(client, "%sFreeze effect ended.", CHAT_TAG);
 }
 
 public void SU_OnToxicEnd(int client)
 {
 	if( !g_hAllow.BoolValue || !g_hEnd.BoolValue ) return;
 	
-	PrintToChat(client, "%s Intoxication ended.", CHAT_TAG);
+	PrintToChat(client, "%sIntoxication ended.", CHAT_TAG);
 }
 
 public void SU_OnBleedEnd(int client)
 {
 	if( !g_hAllow.BoolValue || !g_hEnd.BoolValue ) return;
 	
-	PrintToChat(client, "%s Bleeding ended.", CHAT_TAG);
+	PrintToChat(client, "%sBleeding ended.", CHAT_TAG);
 }
 
 public void SU_OnExhaustEnd(int client)
 {
 	if( !g_hAllow.BoolValue || !g_hEnd.BoolValue ) return;
 	
-	PrintToChat(client, "%s Exhaustion ended.", CHAT_TAG);
-}
-
-void GlobalForward_Frame(DataPack hPack)
-{
-	hPack.Reset();
-	int client = GetClientFromSerial(hPack.ReadCell());
-	int gf_caller = hPack.ReadCell();
-	char sOut[128];
-	hPack.ReadString(sOut, sizeof(sOut));
-	delete hPack;
-	// Invalid client, don't print the message
-	if( !client ) return;
-	switch( gf_caller )
-	{
-		case GF_FREEZE: 	if( SU_IsFrozen(client) )		PrintToChat(client, "%s %s", CHAT_TAG, sOut);
-		case GF_BLEED:		if( SU_IsBleeding(client) )		PrintToChat(client, "%s %s", CHAT_TAG, sOut);
-		case GF_TOXIC:		if( SU_IsToxic(client) )		PrintToChat(client, "%s %s", CHAT_TAG, sOut);
-		case GF_EXHAUST:	if( SU_IsExhausted(client) )	PrintToChat(client, "%s %s", CHAT_TAG, sOut);
-	}
+	PrintToChat(client, "%sExhaustion ended.", CHAT_TAG);
 }
 
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
-* 1.0.3 (16-Jun-2022)
-		- Datapacks now send ClientSerial instead of raw client number.
-		- Strings now have the text assigned when declared instead of using StrCat.
+* 1.1	(23-Sep-2022)
+		- Plugin now uses POST forwards to generate messages
+		- Fixed exhaustion notification gramatical errors.
+		- Correctly display messages for each L4D version.
 * 1.0.2 (30-Dec-2021)
 		- Fixed exhaustion notification not being showed properly.
 * 1.0.1	(25-Dec-2021)

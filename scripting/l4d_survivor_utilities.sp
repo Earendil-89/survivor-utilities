@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.3.5                                                           *
+ *  Version     :   1.4                                                             *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -45,7 +45,7 @@
 #include <survivorutilities>
 #include <profiler>
 
-#define PLUGIN_VERSION	"1.3.5"
+#define PLUGIN_VERSION	"1.4"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -97,8 +97,24 @@ ConVar	g_hRunSpeed, g_hWaterSpeed, g_hLimpSpeed, g_hCritSpeed, g_hWalkSpeed, g_h
 		g_hToxicOverride, g_hBleedOverride, g_hExhaustOverride, g_hHealDuration, g_hReviveDuration,
 		g_hDefibDuration, g_hAdrenSpeed, g_hMaxHealth, g_hRecoilScale, g_hScopeSpeed, g_hAdrenRunSpeed;
 
-GlobalForward	ForwardFreeze, ForwardBleed, ForwardToxic, ForwardExhaust, ForwardFreezeEnd, ForwardBleedEnd, ForwardToxicEnd, ForwardExhaustEnd,
-				ForwardDefib, ForwardRevive, ForwardHeal;
+GlobalForward gf_Freeze;
+GlobalForward gf_Bleed;
+GlobalForward gf_Toxic;
+GlobalForward gf_Exhaust;
+GlobalForward gf_FreezeEnd;
+GlobalForward gf_BleedEnd;
+GlobalForward gf_ToxicEnd;
+GlobalForward gf_ExhaustEnd;
+GlobalForward gf_Defib;
+GlobalForward gf_Revive;
+GlobalForward gf_Heal;
+GlobalForward gf_FreezePost;
+GlobalForward gf_BleedPost;
+GlobalForward gf_ToxicPost;
+GlobalForward gf_ExhaustPost;
+GlobalForward gf_DefibPost;
+GlobalForward gf_RevivePost;
+GlobalForward gf_HealPost;
 
 bool g_bL4D2;
 
@@ -154,20 +170,28 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("SU_IsExhausted",		Native_GetExhaust);
 
 	// Forwards when survivor conditions are being set (can be modified)
-	ForwardFreeze =		new GlobalForward("SU_OnFreeze",			ET_Event, Param_Cell, Param_FloatByRef);
-	ForwardBleed =		new GlobalForward("SU_OnBleed",				ET_Event, Param_Cell, Param_CellByRef);
-	ForwardToxic =		new GlobalForward("SU_OnToxic",				ET_Event, Param_Cell, Param_CellByRef);
-	ForwardExhaust =	new GlobalForward("SU_OnExhaust",			ET_Event, Param_Cell, Param_CellByRef);
+	gf_Freeze =		new GlobalForward("SU_OnFreeze",			ET_Event, Param_Cell, Param_FloatByRef);
+	gf_Bleed =		new GlobalForward("SU_OnBleed",				ET_Event, Param_Cell, Param_CellByRef);
+	gf_Toxic =		new GlobalForward("SU_OnToxic",				ET_Event, Param_Cell, Param_CellByRef);
+	gf_Exhaust =	new GlobalForward("SU_OnExhaust",			ET_Event, Param_Cell, Param_CellByRef);
+	// POST forwards for conditions
+	gf_FreezePost =	new GlobalForward("SU_OnFreeze_Post",		ET_Ignore, Param_Cell, Param_Float, Param_Cell);
+	gf_BleedPost =	new GlobalForward("SU_OnBleed_Post",		ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
+	gf_ToxicPost =	new GlobalForward("SU_OnToxic_Post",		ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
+	gf_ExhaustPost = new GlobalForward("SU_OnExhaust_Post",		ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
 	// Forwards when survivor conditions end (can't be modified)
-	ForwardFreezeEnd =	new GlobalForward("SU_OnFreezeEnd",			ET_Ignore, Param_Cell);
-	ForwardBleedEnd	=	new GlobalForward("SU_OnBleedEnd",			ET_Ignore, Param_Cell);
-	ForwardToxicEnd =	new GlobalForward("SU_OnToxicEnd",			ET_Ignore, Param_Cell);
-	ForwardExhaustEnd =	new GlobalForward("SU_OnExhaustEnd",		ET_Ignore, Param_Cell);
+	gf_FreezeEnd =	new GlobalForward("SU_OnFreezeEnd",			ET_Ignore, Param_Cell);
+	gf_BleedEnd	=	new GlobalForward("SU_OnBleedEnd",			ET_Ignore, Param_Cell);
+	gf_ToxicEnd =	new GlobalForward("SU_OnToxicEnd",			ET_Ignore, Param_Cell);
+	gf_ExhaustEnd =	new GlobalForward("SU_OnExhaustEnd",		ET_Ignore, Param_Cell);
 	// Forwards for reviving/backpack actions
-	ForwardDefib =		new GlobalForward("SU_OnDefib",				ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
-	ForwardRevive =		new GlobalForward("SU_OnRevive",			ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
-	ForwardHeal =		new GlobalForward("SU_OnHeal",				ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
-
+	gf_Defib =		new GlobalForward("SU_OnDefib",				ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
+	gf_Revive =		new GlobalForward("SU_OnRevive",			ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
+	gf_Heal =		new GlobalForward("SU_OnHeal",				ET_Event, Param_Cell, Param_Cell, Param_FloatByRef);
+	// POST forwards for healing/reviving
+	gf_DefibPost =	new GlobalForward("SU_OnDefib_Post",		ET_Ignore, Param_Cell, Param_Cell, Param_Float);
+	gf_RevivePost =	new GlobalForward("SU_OnRevive_Post",		ET_Ignore, Param_Cell, Param_Cell, Param_Float);
+	gf_HealPost =	new GlobalForward("SU_OnHeal_Post",			ET_Ignore, Param_Cell, Param_Cell, Param_Float);
 	RegPluginLibrary("survivorutilities");
 
 	return APLRes_Success;
@@ -195,7 +219,7 @@ public void OnPluginStart()
 	g_hBleedDelay =			CreateConVar("sm_su_bleed_delay",			"5.0",		"Delay in seconds between bleed damages.",				FCVAR_NOTIFY, true, 0.1);
 	g_hBleedOverride =		CreateConVar("sm_su_bleed_override",		"2",		"What should plugin do with bleed amount if a player is bleeding again?\n0 = Don't override amount.\n1 = Override if new amount is higher. \n2 = Add new amount to the original one.\n3 = Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	// Freeze ConVars
-	g_hFreezeOverride =		CreateConVar("sm_su_freeze_override",		"2",		"What should plugin do with freeze time if a player is frozen again?\n0 = Don't change original freeze time.\n1 = Change original freeze time if new time is higher.\n2 = Add the new freeze time to the original time.\n3 = Override original time.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hFreezeOverride =		CreateConVar("sm_su_freeze_override",		"2",		"What should plugin do with freeze time if a player is frozen again?\n0 = Don't override original freeze time.\n1 = Override original freeze time if new time is higher.\n2 = Add the new freeze time to the original time.\n3 = Override original time.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	//Exhaust ConVars
 	g_hExhaustOverride =	CreateConVar("sm_su_exhaust_override",		"2",		"What should plugin do with exhaust amount if a player is exhausted again=\n0 = Don't override amount.\n1 = Override if new amount is higher.\n2 = Add new amount to the original one.\n3 Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	g_hRecoilScale =		CreateConVar("sm_su_exhaust_recoil_scale",	"1.0",		"Scale the default exhaust recoil by this amount.", FCVAR_NOTIFY, true, 0.0, true, 5.0);
@@ -205,11 +229,11 @@ public void OnPluginStart()
 	g_hLimpHealth =		FindConVar("survivor_limp_health");
 	g_hHealDuration = 	FindConVar("first_aid_kit_use_duration");
 	g_hReviveDuration =	FindConVar("survivor_revive_duration");
+	g_hMaxHealth =		FindConVar("first_aid_kit_max_heal");
 	if( g_bL4D2 )
 	{
 		g_hDefibDuration =	FindConVar("defibrillator_use_duration");
 		g_hAdrenSpeed =		FindConVar("adrenaline_revive_speedup");
-		g_hMaxHealth =		FindConVar("first_aid_kit_max_heal");
 	}
 
 	g_hRunSpeed.AddChangeHook(CVarChange_Speeds);
@@ -520,7 +544,7 @@ MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 	else duration = g_hHealDuration.FloatValue;
 	Action aResult;
 	
-	Call_StartForward(ForwardRevive);
+	Call_StartForward(gf_Revive);
 	Call_PushCell(pThis);
 	Call_PushCell(client);
 	Call_PushFloatRef(duration);
@@ -544,7 +568,13 @@ MRESReturn OnRevive(int pThis, Handle hReturn, Handle hParams)
 MRESReturn OnRevive_Post(int pThis, Handle hReturn, Handle hParams)
 {
 	if( g_bReviveChanged )
-	{
+	{		
+		Call_StartForward(gf_RevivePost);
+		Call_PushCell(pThis);	// User
+		Call_PushCell(DHookGetParam(hParams, 1));	// Target
+		Call_PushFloat(g_hReviveDuration.FloatValue);
+		Call_Finish();
+		
 		g_hReviveDuration.SetFloat(g_fReviveDuration, true, false);
 		g_fReviveDuration = -1.0;
 	}
@@ -559,7 +589,7 @@ MRESReturn StartHealing(int pThis, Handle hReturn, Handle hParams)
 	float duration = g_hHealDuration.FloatValue;
 	Action aResult;
 	
-	Call_StartForward(ForwardHeal);
+	Call_StartForward(gf_Heal);
 	Call_PushCell(pThis);
 	Call_PushCell(target);
 	Call_PushFloatRef(duration);
@@ -580,10 +610,16 @@ MRESReturn StartHealing(int pThis, Handle hReturn, Handle hParams)
 	return MRES_Ignored;
 }
 
-MRESReturn StartHealing_Post(int pThis, Handle hReturn)
+MRESReturn StartHealing_Post(int pThis, Handle hReturn, Handle hParams)
 {
 	if( g_bHealChanged )
 	{
+		Call_StartForward(gf_HealPost);
+		Call_PushCell(pThis);
+		Call_PushCell(DHookGetParam(hParams, 1));
+		Call_PushFloat(g_hHealDuration.FloatValue);
+		Call_Finish();
+	
 		g_hHealDuration.SetFloat(g_fHealDuration, true, false);
 		g_bHealChanged = false;
 	}
@@ -607,7 +643,7 @@ MRESReturn MedStartAct(Handle hReturn, Handle hParams)
 	float duration = GetEntProp(client, Prop_Send, "m_bAdrenalineActive") == 0 ? g_hHealDuration.FloatValue : g_hHealDuration.FloatValue * g_hAdrenSpeed.FloatValue;
 	Action aResult;
 	
-	Call_StartForward(ForwardHeal);
+	Call_StartForward(gf_Heal);
 	Call_PushCell(client);
 	Call_PushCell(target);
 	Call_PushFloatRef(duration);
@@ -632,6 +668,12 @@ MRESReturn MedStartAct_Post(Handle hReturn, Handle hParams)
 {
 	if( g_bHealChanged )
 	{
+		Call_StartForward(gf_HealPost);
+		Call_PushCell(DHookGetParam(hParams, 2));	// Client
+		Call_PushCell(DHookGetParam(hParams, 3));	// Target
+		Call_PushFloat(g_hHealDuration.FloatValue);
+		Call_Finish();
+		
 		g_hHealDuration.SetFloat(g_fHealDuration, true, false);
 		g_bHealChanged = false;
 	}
@@ -645,7 +687,7 @@ MRESReturn DefStartAct(Handle hReturn, Handle hParams)
 	float duration = GetEntProp(client, Prop_Send, "m_bAdrenalineActive") == 0 ? g_hDefibDuration.FloatValue : g_hDefibDuration.FloatValue * g_hAdrenSpeed.FloatValue;
 	Action aResult;
 	
-	Call_StartForward(ForwardDefib);
+	Call_StartForward(gf_Defib);
 	Call_PushCell(client);
 	Call_PushCell(model);
 	Call_PushFloatRef(duration);
@@ -660,7 +702,11 @@ MRESReturn DefStartAct(Handle hReturn, Handle hParams)
 	{
 		g_fDefibDuration = g_hDefibDuration.FloatValue;
 		g_hDefibDuration.SetFloat(duration, true, false);
-		RequestFrame(Defib_Frame);
+		
+		DataPack hPack = new DataPack();
+		RequestFrame(Defib_Frame, hPack);
+		hPack.WriteCell(GetClientSerial(client));
+		hPack.WriteCell(EntIndexToEntRef(model));
 	}
 	
 	return MRES_Ignored;
@@ -670,8 +716,21 @@ MRESReturn DefStartAct(Handle hReturn, Handle hParams)
  * DefStartAct_Post doesn't work, it sets the ConVar to its original value too soon
  * and the time override has no effect, waiting a frame instead
  */
-void Defib_Frame()
+void Defib_Frame(DataPack hPack)
 {
+	hPack.Reset();
+	int client = GetClientFromSerial(hPack.ReadCell());
+	int model = EntRefToEntIndex(hPack.ReadCell());
+	delete hPack;
+	
+	if( client && model != -1 )
+	{
+		Call_StartForward(gf_DefibPost);
+		Call_PushCell(client);
+		Call_PushCell(model);
+		Call_PushFloat(g_hDefibDuration.FloatValue);
+		Call_Finish();
+	}
 	g_hDefibDuration.SetFloat(g_fDefibDuration, true, false);
 }
 
@@ -983,7 +1042,7 @@ Action BleedDmg_Timer(Handle timer, int client)
 	
 	else
 	{
-		Call_StartForward(ForwardBleedEnd);
+		Call_StartForward(gf_BleedEnd);
 		Call_PushCell(client);
 		Call_Finish();
 	}
@@ -1191,6 +1250,7 @@ int Native_AddFreeze(Handle plugin, int numParams)
 	float fTime = GetNativeCell(2);
 	if( fTime < 0.1 ) ThrowNativeError(SP_ERROR_PARAM, "SU_AddFreeze Error: Invalid time value: %f", fTime); 	// Return error if invalid values
 
+	bool active;			// Sends info to POST forwards about if the client was already under the effect when native was called
 	float fCurrTime = 0.0;	// This stores the remaining freeze time of survivor if needed, its taken apart to preserve it from changing it via hook
 	float fHookTime = fTime;
 
@@ -1203,12 +1263,13 @@ int Native_AddFreeze(Handle plugin, int numParams)
 		else if( g_hFreezeOverride.IntValue == 1 && fTime + GetGameTime() <= g_fFreezeTime[client] ) return 0;
 		// If ConVar allows to stack freeze time
 		else if( g_hFreezeOverride.IntValue == 2 ) fCurrTime =  g_fFreezeTime[client] - GetGameTime();
-		// Value 3 means replace always, not need to do anything here
+
+		active = true;
 	}
 	
 	// Hook function
 	Action aResult = Plugin_Continue;
-	Call_StartForward(ForwardFreeze);
+	Call_StartForward(gf_Freeze);
 	Call_PushCell(client);
 	Call_PushFloatRef(fHookTime);
 	Call_Finish(aResult);
@@ -1230,6 +1291,13 @@ int Native_AddFreeze(Handle plugin, int numParams)
 	delete g_hFreezeTimer[client];
 	g_fFreezeTime[client] = fTime + fCurrTime + GetGameTime();
 	g_hFreezeTimer[client] = CreateTimer(fTime + fCurrTime, Freeze_Timer, client);
+	
+	// Call the Post forward to only read results of the native
+	Call_StartForward(gf_FreezePost);
+	Call_PushCell(client);
+	Call_PushFloat(fTime);
+	Call_PushCell(active);
+	Call_Finish();
 	return 0;
 }
 
@@ -1248,9 +1316,10 @@ int Native_RemoveFreeze(Handle plugin, int numParams)
 	SDKUnhook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch);
 	BlockPlayerAttacks(client, false);
 	
-	Call_StartForward(ForwardFreezeEnd);
+	Call_StartForward(gf_FreezeEnd);
 	Call_PushCell(client);
 	Call_Finish();
+	
 	return 0;
 }
 
@@ -1261,6 +1330,7 @@ int Native_AddBleed(Handle plugin, int numParams)
 	if( !IsPlayerAlive(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddBleed Error: Client %i not alive.", client);
 	if( GetClientTeam(client) != 2 )	ThrowNativeError(SP_ERROR_PARAM, "SU_AddBleed Error: Client %i is not a survivor.", client);
 	
+	bool active;
 	int hits = GetNativeCell(2);
 	int currHits = 0;
 	if( hits <= 0 ) ThrowNativeError(SP_ERROR_PARAM, "SU_AddBleed error: Invalid amount: %i", hits);
@@ -1275,9 +1345,10 @@ int Native_AddBleed(Handle plugin, int numParams)
 			case 1: if( hits < g_iBleedToken[client] ) return 0;
 			case 2: currHits = g_iBleedToken[client];
 		}
+		active = true;
 	}
 	
-	Call_StartForward(ForwardBleed);
+	Call_StartForward(gf_Bleed);
 	Call_PushCell(client);
 	Call_PushCellRef(hookHits);
 	Call_Finish(aResult);	
@@ -1290,6 +1361,12 @@ int Native_AddBleed(Handle plugin, int numParams)
 	delete g_hBleedTimer[client];
 	g_hBleedTimer[client] = CreateTimer(g_hBleedDelay.FloatValue, BleedDmg_Timer, client);
 
+	Call_StartForward(gf_BleedPost);
+	Call_PushCell(client);
+	Call_PushCell(hits);
+	Call_PushCell(active);
+	Call_Finish();
+	
 	return 0;
 }
 
@@ -1304,9 +1381,11 @@ int Native_RemoveBleed(Handle plugin, int numParams)
 		
 	g_iBleedToken[client] = 0;
 	
-	Call_StartForward(ForwardBleedEnd);
+	Call_StartForward(gf_BleedEnd);
 	Call_PushCell(client);
 	Call_Finish();
+	
+	return 0;
 }
 
 int Native_AddToxic(Handle plugin, int numParams)
@@ -1316,6 +1395,7 @@ int Native_AddToxic(Handle plugin, int numParams)
 	if( !IsPlayerAlive(client) )		ThrowNativeError(SP_ERROR_PARAM, "SU_AddToxic Error: Client %i is not alive.", client);
 	if( GetClientTeam(client) != 2 )	ThrowNativeError(SP_ERROR_PARAM, "SU_AddToxic Error: Client %i is not a survivor.", client);
 	
+	bool active;
 	int hits = GetNativeCell(2);
 	if( hits <= 0 ) ThrowNativeError(SP_ERROR_PARAM, "SU_AddToxic Error: Invalid amount: %i", hits);
 	int currHits = 0;
@@ -1326,25 +1406,32 @@ int Native_AddToxic(Handle plugin, int numParams)
 	{
 		switch( g_hToxicOverride.IntValue )
 		{
-			case 0: return;	// Stop native call
-			case 1: if( hits < g_iToxicToken[client] ) return;	// Stop native call if new amount is lower than old amount
+			case 0: return 0;	// Stop native call
+			case 1: if( hits < g_iToxicToken[client] ) return 0;	// Stop native call if new amount is lower than old amount
 			case 2: currHits = g_iToxicToken[client]; // Store remaining toxic hits to add them to the native value
 		}
+		active = true;
 	}
 
-	Call_StartForward(ForwardToxic);
+	Call_StartForward(gf_Toxic);
 	Call_PushCell(client);
 	Call_PushCellRef(hookHits);
 	Call_Finish(aResult);
 	
 	if( aResult == Plugin_Changed && hookHits > 0 ) hits = hookHits;
-	if( aResult == Plugin_Handled ) return;
+	if( aResult == Plugin_Handled ) return 0;
 	
 	g_iToxicToken[client] = hits + currHits;
 	delete g_hToxicTimer[client];
 	g_hToxicTimer[client] = CreateTimer(g_hToxicDelay.FloatValue, ToxicDmg_Timer, client);
 	
-	return;
+	Call_StartForward(gf_ToxicPost);
+	Call_PushCell(client);
+	Call_PushCell(hits);
+	Call_PushCell(active);
+	Call_Finish();
+	
+	return 0;
 }
 
 int Native_RemoveToxic(Handle plugin, int numParams) 
@@ -1359,7 +1446,7 @@ int Native_RemoveToxic(Handle plugin, int numParams)
 		
 	g_iToxicToken[client] = 0;
 	
-	Call_StartForward(ForwardToxicEnd);
+	Call_StartForward(gf_ToxicEnd);
 	Call_PushCell(client);
 	Call_Finish();
 	return 0;
@@ -1427,6 +1514,7 @@ int Native_AddExhaust(Handle plugin, int numParams)
 	if( GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0 )
 		ThrowNativeError(SP_ERROR_NATIVE, "SU_AddExhaust Error: Can't implement exhaustion on Client %i because is under adrenaline effect.", client);
 
+	bool active;
 	int iTokens = numParams == 1 ? EXHAUST_TOKEN : GetNativeCell(2); // Old version used numParams = 1, and exhaust amount was constant
 	if( iTokens <= 0 ) ThrowNativeError(SP_ERROR_PARAM, "SU_AddExhaust Error: Amount %i is invalid.", iTokens);
 	int iHookTokens = iTokens;
@@ -1439,10 +1527,11 @@ int Native_AddExhaust(Handle plugin, int numParams)
 			case 1: if( iTokens < g_iExhaustToken[client] ) return 0;
 			case 2: iCurrTokens = g_iExhaustToken[client];
 		}
+		active = true;
 	}
 	
 	Action aResult = Plugin_Continue;
-	Call_StartForward(ForwardExhaust);
+	Call_StartForward(gf_Exhaust);
 	Call_PushCell(client);
 	Call_PushCellRef(iHookTokens);
 	Call_Finish(aResult);
@@ -1451,9 +1540,16 @@ int Native_AddExhaust(Handle plugin, int numParams)
 	if( aResult == Plugin_Handled ) return 0;
 	
 	if( !IsValidEntRef(g_iPostProcess) ) CreatePostProcess();
-	g_iExhaustToken[client] = iHookTokens + iCurrTokens;
+	g_iExhaustToken[client] = iTokens + iCurrTokens;
 	delete g_hExhaustTimer[client];
 	g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
+	
+	Call_StartForward(gf_ExhaustPost);
+	Call_PushCell(client);
+	Call_PushCell(iTokens);
+	Call_PushCell(active);
+	Call_Finish();
+	
 	return 0;
 }
 
@@ -1469,7 +1565,7 @@ int Native_RemoveExhaust(Handle plugin, int numParams)
 	g_iExhaustToken[client] = 0;
 	g_iEntMustDie = true;
 	
-	Call_StartForward(ForwardExhaustEnd);
+	Call_StartForward(gf_ExhaustEnd);
 	Call_PushCell(client);
 	Call_Finish();
 	return 0;
@@ -1540,54 +1636,57 @@ int Native_GetExhaust(Handle plugin, int numParams)
 /*============================================================================================
 									Changelog
 ----------------------------------------------------------------------------------------------
-* 1.3.5	(08-Sep-2022)
+* 1.4    (23-Sep-2022)
+	- Added Post forwards for plugin events.
+	- Fixed missing natives in L4D.
+* 1.3.5  (08-Sep-2022)
 	- Fixed error when attempting to check adrenaline in L4D games (thanks to Dominatez for reporting).
-* 1.3.4 (28-Jun-2022)
+* 1.3.4  (28-Jun-2022)
     - Fixed errors when zombie control transferred between bots and players in infected team.
-* 1.3.3 (22-Jun-2022)
+* 1.3.3  (22-Jun-2022)
     - Fixed a bug where adrenaline speed overrided crouch, walk and scope speeds.
-* 1.3.2 (19-Jun-2022)
+* 1.3.2  (19-Jun-2022)
     - Fixed water speed not getting settings from the right ConVar.
     - Minor optimizations.
-* 1.3.1	(16-Jun-2022)
+* 1.3.1  (16-Jun-2022)
     - Fixed some possible bugs with timers.
     - Removed public function declarations where the weren't needed.
     - In L4D2, medkit ConVar is reset with a post DHook instead of using a RequestFrame.
-* 1.3	(01-Feb-2022)
+* 1.3    (01-Feb-2022)
     - Fixed adrenaline and scoping movement speed being overrided by run or limping speed.
     - Both adrenaline and scoping movement speed are controlled by CVar and accessed by Natives.
     - SU_AddExhaust now throws an error if client is under adrenaline effect. This prevents API consistency errors.
     - If speed ConVars are changed ingame, survivor custom speeds will scale proportionally instead of being overrided.
-* 1.2.2 (23-Jan-2022)
+* 1.2.2  (23-Jan-2022)
     - Exhaustion extra recoil added to survivors now can be scaled or disabled by ConVar(thanks to Shao for the request).
-* 1.2.1 (19-Jan-2022)
+* 1.2.1  (19-Jan-2022)
     - Fixed errors when shoving a common infected with first aid kit in L4D2 (thanks to Sev for reporting).
     - Fixed fakely triggering of SU_OnHeal when a survivor shoves an special infected with first aid kit in L4D2.
-* 1.2	(18-Jan-2022)
+* 1.2    (18-Jan-2022)
     - Added detouring for game functions:
         * Healing.
         * Reviving survivors.
         * Defib survivors (L4D2)
     - Detours allow to modify backpack usage, healing and revive duration, and block events.
     - Minor optimizations.
-* 1.1.2 (09-Jan-2022)
+* 1.1.2  (09-Jan-2022)
     - Blocked plugin error messages when a survivor joins infected team (thanks to Sev for reporting).
-* 1.1.1 (01-Jan-2022)
+* 1.1.1  (01-Jan-2022)
     - Fixed timer Handle errors.
-* 1.1	(30-Dec-2021)
+* 1.1    (30-Dec-2021)
     - Fixed bug where survivor limp speed was not being applied.
     - Survivor speeds are correctly reset on round restart.
     - Improved native error trhow messages.
     - Survivor status now is paused if the survivor goes idle, it will be resumed after survivor joins back.
     - SU_AddExhaust now requires a second parameter, token amount (read survivorutilities.inc for more info).
     - SU_AddExhaust now allows to stack exhaust tokens or override, like the other effects.
-* 1.0.3 (25-Dec-2021)
+* 1.0.3  (25-Dec-2021)
     - Removed debugging messages.
-* 1.0.2 (25-Dec-2021)
+* 1.0.2  (25-Dec-2021)
     - Changed default override values from 1 to 2.
     - Fixed ConVar descriptions.
-* 1.0.1	(25-Dec-2021)
+* 1.0.1  (25-Dec-2021)
     - Fixed missing config file.
-* 1.0	(25-Dec-2021)
+* 1.0    (25-Dec-2021)
     - Initial release.
 ============================================================================================*/

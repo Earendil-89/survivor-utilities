@@ -1,5 +1,5 @@
 /*============================================================================================
-                       [L4D & L4D2] Survivor utilities: Test plugin
+							[L4D & L4D2] Survivor utilities: Test plugin
 ----------------------------------------------------------------------------------------------
 *	Author	:	Eärendil
 *	Descrp	:	Test applying survivor conditions, forwards and natives
@@ -302,97 +302,77 @@ public Action ADM_Info(int client, int args)
 	
 }
 
-public Action SU_OnFreeze(int client, float &time)
+#if DEBUG
+public void SU_OnFreeze_Post(int client, float time, const bool overload)
 {
-	#if DEBUG
 	PrintToServer("******* Survivor frozen *******");
 	PrintToServer("** Client %N **  Time %f **", client, time);
-	#endif
-	return Plugin_Continue;
+	if( overload )
+		PrintToServer("** Effect has been extended/overridden **");
 }
 
-public Action SU_OnBleed(int client, int &amount)
+public void SU_OnBleed_Post(int client, int amount, const bool overload)
 {
-	#if DEBUG
 	PrintToServer("******* Survivor bleeding *******");
 	PrintToServer("** Client %N ** Bleed hits %i **", client, amount);
-	#endif
-	return Plugin_Continue;
+	if( overload )
+		PrintToServer("** Effect has been extended/overridden **");
 }
 
-public Action SU_OnToxic(int client, int &amount)
+public void SU_OnToxic_Post(int client, int amount, const bool overload)
 {
-	#if DEBUG
 	PrintToServer("******* Survivor intoxicated *******");
 	PrintToServer("** Client %N ** Toxic hits %i **", client, amount);
-	#endif
-	return Plugin_Continue;
+	if( overload )
+		PrintToServer("** Effect has been extended/overridden **");
 }
 
-public Action SU_OnExhaust(int client)
+public void SU_OnExhaust_Post(int client, int amount, const bool overload)
 {
-	#if DEBUG
 	PrintToServer("******* Survivor exhausted *******");
 	PrintToServer("** Client %N **", client);
-	#endif
-	return Plugin_Continue;
+	if( overload )
+		PrintToServer("** Effect has been extended/overridden **");
 }
 
 public void SU_OnFreezeEnd(int client)
 {
-	#if DEBUG
 	PrintToServer("**** Survivor %N Freeze ended ****", client);
-	#endif
-	
 }
 
 public void SU_OnBleedEnd(int client)
 {
-	#if DEBUG
 	PrintToServer("**** Survivor %N Bleed ended ****", client);
-	#endif
 }
 
 public void SU_OnToxicEnt(int client)
 {
-	#if DEBUG
 	PrintToServer("**** Survivor %N Intoxication ended ****", client);
-	#endif
 }
 
 public void SU_OnExhaustEnd(int client)
 {
-	#if DEBUG
 	PrintToServer("**** Survivor %N Exhaust ended ****", client);
-	#endif
 }
 
 
-public Action SU_OnDefib(int client, int targetModel, float& duration)
+public void SU_OnDefib_Post(int client, int targetModel, float duration)
 {
-	#if DEBUG
 	PrintToServer("**** Survivor %N is using a defibrillator ****", client);
 	PrintToServer("**** Target model edict: %i ****", targetModel);
 	PrintToServer("**** Defibrillator use time %f ****", duration);
 	PrintToServer("**** Defibrillator use after: %f ****", duration);
-	#endif
-	return Plugin_Continue;
 }
 
-public Action SU_OnRevive(int client, int target, float& duration)
+public void SU_OnRevive_Post(int client, int target, float duration)
 {
-	#if DEBUG
 	PrintToServer("**** Survivor %N is reviving %N ****", client, target);
 	PrintToServer("**** Revive time %f ****", duration);
-	#endif
-	return Plugin_Continue;
 }
 
-public Action SU_OnHeal(int client, int target, float& duration)
+public void SU_OnHeal_Post(int client, int target, float duration)
 {
-	#if DEBUG
 	PrintToServer("**** Survivor %N is healing %N ****", client, target);
 	PrintToServer("**** Heal time %f ****", duration);
-	#endif
-	return Plugin_Continue;
 }
+#endif
