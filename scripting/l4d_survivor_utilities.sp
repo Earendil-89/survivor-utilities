@@ -47,7 +47,7 @@
 #include <survivorutilities>
 #include <profiler>
 
-#define PLUGIN_VERSION	"1.5-BETA-02"
+#define PLUGIN_VERSION	"1.5-SNAPSHOT"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -66,7 +66,6 @@
 
 // Max and minimum speeds are applied for legacy kernel, because it works terrible on extreme values
 #define MAX_SPEED				2000.0
-#define MIN_RUN_SPEED			95.0
 #define MIN_SPEED				65.0	
 
 #define SPEED_NULL -1	// This is to return an invalid speed if the player is incapped or can't move
@@ -459,8 +458,29 @@ void KernelConVar()
 				g_bLegacyKernel = false;
 			}
 		}
+	}
+	else
+	{
+		g_bLegacyKernel = g_hLegacyKernel.BoolValue;
+		
+		if( g_bLegacyKernel )
+		{
+			for( int i = 1; i <= MaxClients; i++ )
+			{
+				if( !IsClientInGame(i) ) continue;
+				
+				SDKUnhook(i, SDKHook_PostThink, PostThink);
+				SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
+			}
+		}
 		else
-			g_bLegacyKernel = g_hLegacyKernel.BoolValue;
+		{
+			for( int i = 1; i <= MaxClients; i++ )
+			{
+				if( IsValidAliveSurvivor(i) )
+					SDKHook(i, SDKHook_PostThink, PostThink);
+			}
+		}
 	}
 }
 
@@ -489,11 +509,14 @@ void Event_Heal(Event event, const char[] name, bool dontBroadcast)
 
 void Event_Player_Spawn(Event event, const char[] name, bool dontBroadcast)
 {
+	if( g_bLegacyKernel )
+		return;
+		
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	if( GetClientTeam(client) != 2 )
 		return;
-		
-	SDKHook(client, SDKHook_PostThink, PlayerThink);
+
+	SDKHook(client, SDKHook_PostThink, PostThink);
 }
 
 void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
@@ -509,8 +532,8 @@ void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
 	}
 		
 	SetClientData(client, false); // Removes all effects without calling API events, keep player speeds
-	if( GetClientTeam(client) == 2 )
-		SDKUnhook(client, SDKHook_PostThink, PlayerThink);
+	if( !g_bLegacyKernel && GetClientTeam(client) == 2 )
+		SDKUnhook(client, SDKHook_PostThink, PostThink);
 }
 
 void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
@@ -521,7 +544,7 @@ void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
 		{
 			SetClientData(i, true); // Reset ALL data, even speeds on round start
 			if( GetClientTeam(i) == 2 )
-				SDKHook(i, SDKHook_PostThink, PlayerThink);
+				SDKHook(i, SDKHook_PostThink, PostThink);
 		}
 	}
 }
@@ -570,6 +593,9 @@ void Event_Player_Replaced(Event event, const char[] name, bool dontBroadcast)
 	if( SU_IsBleeding(client) )		delete g_hBleedTimer[client]; 
 	if( SU_IsToxic(client) )		delete g_hToxicTimer[client];
 	if( SU_IsExhausted(client) )	delete g_hExhaustTimer[client];
+	
+	if( !g_bLegacyKernel )
+		SDKUnhook(client, SDKHook_PostThink, PostThink);
 }
 
 // Survivor tries to get back the control of the character, return paused conditions
@@ -598,7 +624,8 @@ void Event_Bot_Replaced(Event event, const char[] name, bool dontBroadcast)
 		delete g_hExhaustTimer[client];
 		g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
 	}
-	
+	if( !g_bLegacyKernel )
+		SDKHook(client, SDKHook_PostThink, PostThink);
 	g_fSaveFreeze[client] = 0.0;
 }
 
@@ -910,9 +937,8 @@ Action OnWeaponSwitch(int client, int weapon)
 	return Plugin_Continue;
 }
 
-int token = 0;
 // Here is the new Kernel
-Action PlayerThink(int client)
+void PostThink(int client)	// PostThink seems to work fine
 {
 	/// Fix movement speed bug when jumping or staggering (By Silvers)
 	if( GetEntPropEnt(client, Prop_Send, "m_hGroundEntity") == -1 || GetEntPropFloat(client, Prop_Send, "m_staggerTimer", 1) > -1.0 )
@@ -935,7 +961,7 @@ Action PlayerThink(int client)
 			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
 			g_iLastRestrSpeed[client] = SPEED_NULL;
 		}
-		return Plugin_Continue;	
+		return;	
 	}
 	
 	// The new kernel must stop causing player changes when survivors jump or leaves ground
@@ -948,7 +974,7 @@ Action PlayerThink(int client)
 	
 	// Since there is no change on player speed not need to change the speed multiplier
 	if( iCurRestrictiveSpeed == g_iLastRestrSpeed[client] )
-		return Plugin_Continue;
+		return;
 			
 	switch( iCurRestrictiveSpeed )
 	{
@@ -964,29 +990,13 @@ Action PlayerThink(int client)
 		case SPEED_SCOPE:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelScopeSpeed[client]);
 	}
 	g_iLastRestrSpeed[client] = iCurRestrictiveSpeed;	// Assing the new restrictive speed to ignore in future checks without changes
-	PrintToChat(client, "Speed type changed, new is %d", iCurRestrictiveSpeed);
 
-	return Plugin_Continue;
+	return;
 }
 
 /* ========================================================================================== *
  *                                         Functions                                          *
  * ========================================================================================== */
- 
-int GetSurvivorStatus(int client)
-{
-	if( GetEntProp(client, Prop_Send, "m_isIncapacitated") == 1 ) return STATUS_INCAP;
-
-	if( g_bL4D2 && GetEntProp(client, Prop_Send, "m_bAdrenalineActive") != 0 ) return STATUS_ADRENALINE;
-	float fAbsHealth = GetAbsHealth(client);
-	if( fAbsHealth >= 1.0 && fAbsHealth < g_fLimpHealth )
-	{
-		if( fAbsHealth == 1.0 && GetEntProp(client, Prop_Send, "m_currentReviveCount") > 0 ) return STATUS_CRITICAL;
-			
-		else return STATUS_LIMP;
-	}
-	else return STATUS_NORMAL;
-}
 
 // Function from drug effect, modified
 void ScreenColor(int client, int color[4], int flags)
@@ -1022,36 +1032,6 @@ void ScreenColor(int client, int color[4], int flags)
 	}
 
 	EndMessage();
-}
-
-// Compare speeds and get the lowest speed in the player situation
-float GetPlayerSpeed(int client, int playerStatus, float fSpeed, bool isRunning = false)
-{
-	if( GetEntityFlags(client) & FL_INWATER ) // This is the only way to check properly if a survivor is on water
-	{
-		if( fSpeed > g_fAbsWaterSpeed[client] )
-			fSpeed = g_fAbsWaterSpeed[client];
-	}
-	
-	// Attempt to nerf survivor moving speed if scoping, this is like survivor is walking and thats why blocks adrenaline powerup
-	if( GetEntPropEnt(client, Prop_Send, "m_hZoomOwner") != -1 )
-	{
-		fSpeed = fSpeed < g_fAbsScopeSpeed[client] ? fSpeed : g_fAbsScopeSpeed[client];
-		isRunning = false;
-	}
-	// Default game behaviour, when survivor injects adren, hes able to rush in any situation
-	else if( playerStatus == STATUS_ADRENALINE && isRunning )
-		return g_fAbsAdrenSpeed[client];
-	
-	switch( playerStatus )
-	{
-		case STATUS_INCAP: return -1.0; // If this function returns a negative value, the DHook will do nothing, which is logical if survivor is incapped
-		case STATUS_NORMAL: return fSpeed;
-		case STATUS_LIMP: return fSpeed < g_fAbsLimpSpeed[client] ? fSpeed : g_fAbsLimpSpeed[client];
-		case STATUS_CRITICAL: return fSpeed < g_fAbsCritSpeed[client] ? fSpeed : g_fAbsCritSpeed[client];
-	}
-	
-	return -1.0;
 }
 
 /**
@@ -1137,7 +1117,7 @@ int GetMostRestrictiveSpeed(int client, int speedType)	// moveType -> speed of t
 	}
 	
 	// Start restrictions 
-	if( GetEntityFlags(client) & FL_INWATER && g_fAbsWaterSpeed[client] < fSpeed) // Survivor is on water
+	if( GetEntityFlags(client) & FL_INWATER && g_fAbsWaterSpeed[client] < fSpeed ) // Survivor is on water
 	{
 		fSpeed = g_fAbsWaterSpeed[client];
 		result = SPEED_WATER;
@@ -1219,7 +1199,6 @@ void SetClientData(int client, bool fullReset) // FullReset is only called when 
 		g_fAbsAdrenSpeed[client] = g_hAdrenSpeed.FloatValue;
 		g_fAbsLimpSpeed[client] = g_hLimpSpeed.FloatValue;
 		g_fAbsScopeSpeed[client] = g_hScopeSpeed.FloatValue;
-		
 		
 		g_fRelRunSpeed[client] = 1.0;
 		g_fRelCrouchSpeed[client] = 1.0;
@@ -1749,7 +1728,7 @@ int Native_SetSpeed(Handle plugin, int numParams)
 	float fSpeed = GetNativeCell(3);
 
 	// Legacy Kernel has a limitation on speeds
-	if( g_bLegacyKernel && fSpeed < MIN_SPEED )
+	if( g_bLegacyKernel )
 	{
 		if( fSpeed < MIN_SPEED )
 		{
@@ -1774,7 +1753,7 @@ int Native_SetSpeed(Handle plugin, int numParams)
 		case SPEED_WALK:
 		{
 			g_fAbsWalkSpeed[client] = fSpeed;
-			g_fRelRunSpeed[client] = fSpeed / g_hWalkSpeed.FloatValue;
+			g_fRelWalkSpeed[client] = fSpeed / g_hWalkSpeed.FloatValue;
 		}
 		case SPEED_CROUCH:{
 			g_fAbsCrouchSpeed[client] = fSpeed;
