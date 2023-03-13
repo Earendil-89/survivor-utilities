@@ -47,7 +47,7 @@
 #include <survivorutilities>
 #include <profiler>
 
-#define PLUGIN_VERSION	"1.5-BETA-01"
+#define PLUGIN_VERSION	"1.5-BETA-02"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -71,7 +71,7 @@
 
 #define SPEED_NULL -1	// This is to return an invalid speed if the player is incapped or can't move
 
-
+// If all works, this will stop being needed
 enum
 {
 	STATUS_INCAP,
@@ -313,6 +313,7 @@ public void OnPluginStart()
 		
 	HookEvent("pills_used",				Event_Pills_Used);
 	HookEvent("heal_success",			Event_Heal);
+	HookEvent("player_spawn",			Event_Player_Spawn);
 	HookEvent("player_death",			Event_Player_Death);
 	HookEvent("round_start",			Event_Round_Start, EventHookMode_PostNoCopy);
 	HookEvent("weapon_fire",			Event_Weapon_Fire);
@@ -354,8 +355,6 @@ public void OnMapStart()
 	for( int i = 1; i <= MaxClients; i++ )
 	{
 		SetClientData(i, true);
-		if( !g_bLegacyKernel && IsValidClient(i) )
-			SDKHook(i, SDKHook_PostThink, PlayerThink);
 	}
 }
 
@@ -428,7 +427,7 @@ void SetSpeeds()	// I need to change this to prevent override custom player spee
 	// Only change absolute speeds, because relative speeds are a multipler that is preserver between mapchanges
 	for( int i = 1; i <= MaxClients; i++ )
 	{
-		g_fAbsRunSpeed[i] = g_hRunSpeed.FloatValue * g_fRelRunSpeed[i];				// So if player speed is 1.5 after convar change his speed will scale
+		g_fAbsRunSpeed[i] = g_hRunSpeed.FloatValue * g_fRelRunSpeed[i]; // So if player speed is 1.5 after convar change his speed will scale
 		g_fAbsWaterSpeed[i] = g_hWaterSpeed.FloatValue * g_fRelWaterSpeed[i];
 		g_fAbsLimpSpeed[i] = g_hLimpSpeed.FloatValue * g_fRelLimpSpeed[i];
 		g_fAbsCritSpeed[i] = g_hCritSpeed.FloatValue * g_fRelCritSpeed[i];
@@ -450,13 +449,13 @@ void KernelConVar()
 {
 	if( !g_bLeft4DHooks )	// Check if library exists before ConVar change
 	{
-		if( (g_bLeft4DHooks = LibraryExists("left4dhooks")) == false )	// Check again in case it has been loaded
+		if( (g_bLeft4DHooks = LibraryExists("left4dhooks")) == false )	// Check again and attempt to set as enabled in case it has been loaded
 		{
 			if( g_hLegacyKernel.BoolValue == true )	// Attempt to load legacy kernel without Left 4 DHooks
 			{
 				// Print warning and reset 
 				LogMessage("Warning: Left 4 DHooks is not installed, Survivor Utilities Legacy Kernel is disabled.");
-				g_hLegacyKernel.SetBool(true, .notify = false);
+				g_hLegacyKernel.SetBool(false, .notify = false);
 				g_bLegacyKernel = false;
 			}
 		}
@@ -488,6 +487,15 @@ void Event_Heal(Event event, const char[] name, bool dontBroadcast)
 	if( g_iBleedToken[client] > 0) SU_RemoveBleed(client);
 }
 
+void Event_Player_Spawn(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+	if( GetClientTeam(client) != 2 )
+		return;
+		
+	SDKHook(client, SDKHook_PostThink, PlayerThink);
+}
+
 void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
 {
 	int client = GetClientOfUserId(event.GetInt("userid"));
@@ -501,6 +509,8 @@ void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
 	}
 		
 	SetClientData(client, false); // Removes all effects without calling API events, keep player speeds
+	if( GetClientTeam(client) == 2 )
+		SDKUnhook(client, SDKHook_PostThink, PlayerThink);
 }
 
 void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
@@ -508,7 +518,11 @@ void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
 	for( int i = 1; i <= MaxClients; i++ )
 	{
 		if( IsClientInGame(i) )
+		{
 			SetClientData(i, true); // Reset ALL data, even speeds on round start
+			if( GetClientTeam(i) == 2 )
+				SDKHook(i, SDKHook_PostThink, PlayerThink);
+		}
 	}
 }
 
@@ -896,22 +910,40 @@ Action OnWeaponSwitch(int client, int weapon)
 	return Plugin_Continue;
 }
 
+int token = 0;
 // Here is the new Kernel
 Action PlayerThink(int client)
 {
-	if( g_bLegacyKernel )
-		SDKUnhook(client, SDKHook_PostThink, PlayerThink);
-		
-	if( !IsAliveSurvivor(client) )
-		return Plugin_Continue;
-		
+	/// Fix movement speed bug when jumping or staggering (By Silvers)
+	if( GetEntPropEnt(client, Prop_Send, "m_hGroundEntity") == -1 || GetEntPropFloat(client, Prop_Send, "m_staggerTimer", 1) > -1.0 )
+	{
+		// Fix jumping resetting velocity to default
+		float value = GetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue");
+		if( value != 1.0 )
+		{
+			float vVec[3];
+			GetEntPropVector(client, Prop_Data, "m_vecVelocity", vVec);
+			float height = vVec[2];
 
+			ScaleVector(vVec, value);
+			vVec[2] = height; // Maintain default jump height
+
+			TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vVec);
+		}
+		if( g_iLastRestrSpeed[client] != SPEED_NULL ) // Because it was asigned previously to null
+		{
+			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+			g_iLastRestrSpeed[client] = SPEED_NULL;
+		}
+		return Plugin_Continue;	
+	}
+	
 	// The new kernel must stop causing player changes when survivors jump or leaves ground
 	int iButton = GetEntProp(client, Prop_Data, "m_nButtons");	// Determine if the player is walking or crouching
 	int iCurRestrictiveSpeed;
 	
 	if( iButton & IN_DUCK ) iCurRestrictiveSpeed = GetMostRestrictiveSpeed(client, SPEED_CROUCH);	// Crouching is more restrictive than walking
-	else if( iButton & IN_WALK ) iCurRestrictiveSpeed = GetMostRestrictiveSpeed(client, SPEED_WALK);
+	else if( iButton & IN_SPEED ) iCurRestrictiveSpeed = GetMostRestrictiveSpeed(client, SPEED_WALK);
 	else iCurRestrictiveSpeed = GetMostRestrictiveSpeed(client, SPEED_RUN);
 	
 	// Since there is no change on player speed not need to change the speed multiplier
@@ -921,6 +953,7 @@ Action PlayerThink(int client)
 	switch( iCurRestrictiveSpeed )
 	{
 		case SPEED_NULL:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);	// Because survivor speed shouldn't be changed
+		case SPEED_RUN:			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelRunSpeed[client]);
 		case SPEED_WALK:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelWalkSpeed[client]);
 		case SPEED_CROUCH:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelCrouchSpeed[client]);
 		case SPEED_LIMP:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelLimpSpeed[client]);
@@ -931,6 +964,7 @@ Action PlayerThink(int client)
 		case SPEED_SCOPE:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelScopeSpeed[client]);
 	}
 	g_iLastRestrSpeed[client] = iCurRestrictiveSpeed;	// Assing the new restrictive speed to ignore in future checks without changes
+	PrintToChat(client, "Speed type changed, new is %d", iCurRestrictiveSpeed);
 
 	return Plugin_Continue;
 }
@@ -1182,6 +1216,20 @@ void SetClientData(int client, bool fullReset) // FullReset is only called when 
 		g_fAbsCritSpeed[client] = g_hCritSpeed.FloatValue;
 		g_fAbsWaterSpeed[client] = g_hWaterSpeed.FloatValue;
 		g_fAbsExhaustSpeed[client] = g_hExhaustSpeed.FloatValue;
+		g_fAbsAdrenSpeed[client] = g_hAdrenSpeed.FloatValue;
+		g_fAbsLimpSpeed[client] = g_hLimpSpeed.FloatValue;
+		g_fAbsScopeSpeed[client] = g_hScopeSpeed.FloatValue;
+		
+		
+		g_fRelRunSpeed[client] = 1.0;
+		g_fRelCrouchSpeed[client] = 1.0;
+		g_fRelWalkSpeed[client] = 1.0;
+		g_fRelCritSpeed[client] = 1.0;
+		g_fRelWaterSpeed[client] = 1.0;
+		g_fRelExhaustSpeed[client] = 1.0;
+		g_fRelAdrenSpeed[client] = 1.0;
+		g_fRelLimpSpeed[client] = 1.0;
+		g_fRelScopeSpeed[client] = 1.0;
 	}
 	// Disable all screen effects
 	else ScreenColor(client, { 0, 0, 0, 0 }, (0x0001 | 0x0010));
@@ -1758,6 +1806,7 @@ int Native_SetSpeed(Handle plugin, int numParams)
 		}
 		default: ThrowNativeError(SP_ERROR_PARAM, "SU_SetSpeed Error: Invalid speed type.");
 	}
+	g_iLastRestrSpeed[client] = -1;	// This will force client to check again everything and reasign speeds
 	return 0;
 }
 
