@@ -38,14 +38,16 @@ public void __l4d_ssc_SetNTVOptional()
 
 enum
 {
-	SPEED_RUN,		// Min 110.0
-	SPEED_WALK,		// Min 65.0
-	SPEED_CROUCH,	// Min 65.0
-	SPEED_LIMP,		// Min 65.0
-	SPEED_CRITICAL,	// Min 65.0
-	SPEED_WATER,	// Min 65.0
-	SPEED_EXHAUST	// Min 110.0
-}
+	SPEED_RUN,			// Min 110.0
+	SPEED_WALK,			// Min 65.0
+	SPEED_CROUCH,		// Min 65.0
+	SPEED_LIMP,			// Min 65.0
+	SPEED_CRITICAL,		// Min 65.0
+	SPEED_WATER,		// Min 65.0
+	SPEED_EXHAUST,		// Min 110.0
+	SPEED_ADRENALINE,	// Min 110.0
+	SPEED_SCOPE			// Min 65.0
+};
 /*==========================================================================
 								Natives									  
 ----------------------------------------------------------------------------
@@ -116,14 +118,29 @@ native void SU_RemoveToxic(int client);
 /**
  * @brief Sets the speed of the survivor
  *
- * @param client			Target Survivor
+ * @param client			Target Survivor.
  * @param speedType			Type of speed to modify. Valid values: SPEED_RUN, SPEED_WALK, SPEED_CROUCH, SPEED_LIMP, SPEED_CRITICAL, SPEED_WATER, SPEED_EXHAUST.
  * @param amount			Amount of speed (absolute value), lower speeds than the indicated in the speed enum will be clamped.
  *
  * @remark					Default ConVar speeds are asigned when players connects to server, or a new round starts.
  * @remark					Speeds are preserved upon survivor death, you can set survivor speed while dead.
+ * @remark					Using this will override any other speed applied before by your plugin or other plugins.
  */
 native void SU_SetSpeed(int client, int speedType, const float amount);
+
+/**
+ * @brief Sets the speed scale of the survivor
+ *
+ * @param client			Target Survivor.
+ * @param speedType			Type of speed to modify. Valid values: SPEED_RUN, SPEED_WALK, SPEED_CROUCH, SPEED_LIMP, SPEED_CRITICAL, SPEED_WATER, SPEED_EXHAUST.
+ * @param amount			Amount of speed as multiplier (where 1.0 is default speed), speed clamping will happen if the plugin kernel speed engine is set on legacy.
+ * @param divide			Instead of multiply, divide by the given scale value.
+ * @param scaleAll			It will scale all survivor speeds instead of one speed type.
+ *
+ * @remark					Default ConVar speeds are asigned when players connects to server, or a new round starts.
+ * @remark					Speeds are preserved upon survivor death, you can set survivor speed while dead.
+ */
+native void SU_ScaleSpeed(int client, int speedType, const float scale, const bool divide = false, const bool scaleAll = false);
 
 /**
  * @brief Exhausts a survivor.
@@ -177,7 +194,7 @@ native bool SU_IsToxic(int client);
 native bool SU_IsExhausted(int client);
 
 /**
- * @brief Returns player speed.
+ * @brief Returns player absolute speed value.
  *
  * @param client			Client to check.
  * @param speedType			Type of speed to check. Valid values: SPEED_RUN, SPEED_WALK, SPEED_CROUCH, SPEED_LIMP, SPEED_CRITICAL, SPEED_WATER, SPEED_EXHAUST.
@@ -185,6 +202,16 @@ native bool SU_IsExhausted(int client);
  * @return					Current survivor speed value.
  */
 native float SU_GetSpeed(int client, int speedType);
+
+/**
+ * @brief Returns player speed scale as a multiplier of the default survivor speed.
+ *
+ * @param client			Client to check.
+ * @param speedType			Type of speed to check. Valid values: SPEED_RUN, SPEED_WALK, SPEED_CROUCH, SPEED_LIMP, SPEED_CRITICAL, SPEED_WATER, SPEED_EXHAUST.
+ *
+ * @return					Current survivor speed multiplier.
+ */
+native float SU_GetSpeedMultiplier(int client, int speedType);
 
 /*==========================================================================
 							GlobalForwards									  
@@ -197,27 +224,52 @@ native float SU_GetSpeed(int client, int speedType);
 	the survivor will receive until effect ends.
 	- Survivor death removes the current effects, but does not call
 	any GlobalForward.
+	- Post forwards are used to get the results of the native call
+	after hooks, in case the native has been blocked via Plugin_Handled,
+	post forwards won't be fired,
 ==========================================================================*/
 
 /**
  * @brief 					Called whenever SU_AddExhaust is invoked
  *
- * @param client			Target client.
- * @param amount			Amount of exhaust tokens
+ * @param client			Target survivor.
+ * @param amount			Amount of exhaust tokens.
  *
- * @return					Plugin_Handled to block the exhaustion, Plugin_Continue otherwise
+ * @return					Plugin_Handled to block the exhaustion, Plugin_Continue otherwise.
  */
 forward Action SU_OnExhaust(int client, int& amount);
 
 /**
+ * @brief 					Post forward for SU_OnExhaust, gives the final values after hooking.
+ *
+ * @param client			Target client.
+ * @param amount			Amount of exhaust tokens.
+ * @param overload			True if the player is already under the effect and is an effect override/extension. False otherwise.
+ *
+ * @noreturn
+ */
+forward void SU_OnExhaust_Post(int client, int amount, const bool overload);
+
+/**
  * @brief					Called whenever SU_AddFreeze is invoked.
  *
- * @param client			Target survivor
+ * @param client			Target survivor.
  * @param time				Duration of the freeze (if survivor is already frozen it may not be applied based on server config)
  * 
  * @return					Plugin_Handled to block the freeze, Plugin_Changed to override time value, Plugin_Continue otherwise.
  */
 forward Action SU_OnFreeze(int client, float& time);
+
+/**
+ * @brief					Post forward for SU_OnFreeze, gives the final values after hooking.
+ *
+ * @param client			Frozen survivor.
+ * @param time				Duration of the freeze.
+ * @param overload			True if the player is already under the effect and is an effect override/extension. False otherwise.
+ * 
+ * @noreturn
+ */
+forward void SU_OnFreeze_Post(int client, float time, const bool overload);
 
 /**
  * @brief					Called whenever SU_AddBleed is invoked.
@@ -230,6 +282,17 @@ forward Action SU_OnFreeze(int client, float& time);
 forward Action SU_OnBleed(int client, int& amount);
 
 /**
+ * @brief					Post forward for SU_OnBleed, gives the final values after hooking.
+ *
+ * @param client			Target survivor.
+ * @param amount			Amount of bleed tokens.
+ * @param overload			True if the player is already under the effect and is an effect override/extension. False otherwise.
+ *
+ * @noreturn
+ */
+forward void SU_OnBleed_Post(int client, int amount, const bool overload);
+ 
+/**
  * @brief					Called whenever SU_AddToxic is invoked.
  *
  * @param client			Target survivor.
@@ -238,6 +301,17 @@ forward Action SU_OnBleed(int client, int& amount);
  * @return					Plugin_Handled to block the intoxication, Plugin_Changed to override token amount, Plugin_Continue otherwise. 
  */
 forward Action SU_OnToxic(int client, int& amount);
+
+/**
+ * @brief					Post forward for SU_OnToxic, gives the final values after hooking.
+ *
+ * @param client			Target survivor.
+ * @param amount			Amount of toxic tokens.
+ * @param overload			True if the player is already under the effect and is an effect override/extension. False otherwise.
+ * 
+ * @noreturn
+ */
+forward void SU_OnToxic_Post(int client, int amount, const bool overload);
 
 /**
  * @brief					Called whenever SU_RemoveFreeze is invoked.
@@ -291,31 +365,66 @@ forward void SU_OnExhaustEnd(int client);
  * @param client			Survivor using the defibrillator
  * @param targetModel		Death model entity being defibrillated
  * @param duration			Duration of the defib event
- * @remark					L4D2 ONLY
+ * @remark					L4D2.
  *
  * @return					Plugin_Handled to block the defibrillation, Plugin_Changed to override duration, Plugin_Continue otherwise
  */
 forward Action SU_OnDefib(int client, int targetModel, float& duration);
- 
+
+/**
+ * @brief					Post forward for SU_OnFreeze, gives the final values after hooking.
+ *
+ * @param client			Survivor using the defibrillator.
+ * @param targetModel		Index of death model entity target.
+ * @param duration			Duration of the defib event.
+ * @remark					Only works in L4D2
+ *
+ * @noreturn
+ */
+forward void SU_Ondefib_Post(int client, int targetModel, float duration);
+
 /**
  * @brief					Called when a survivor revives another one
  *
  * @param client			Survivor reviving
- / @param target			Survivor being revived
+ * @param target			Survivor being revived
  * @param duration			Duration of the deploy
- * @remark					L4D AND L4D2
  *
  * @return					Plugin_Handled to block the reviving, Plugin_Changed to override duration, Plugin_Continue otherwise
  */
 forward Action SU_OnRevive(int client, int target, float& duration);
 
 /**
+ * @brief					Post event for survivor reviving, use to get the final values after hooks
+ *
+ * @param client			Survivor reviving
+ * @param target			Survivor being revived
+ * @param duration			Duration of the deploy
+ *
+ * @noreturn
+ */
+forward void SU_OnRevive_Post(int client, int target, float duration);
+
+/**
  * @brief					Called when a survivor heals with a first aid kit
  *
  * @param client			Survivor performing heal
- / @param target			Survivor being healed
+ * @param target			Survivor being healed
  * @param duration			Duration of the healing
+ * @remark					L4D AND L4D2
  *
  * @return					Plugin_Handled to block the healing, Plugin_Changed to override duration, Plugin_Continue otherwise
  */
- forward Action SU_OnHeal(int client, int target, float& duration);
+forward Action SU_OnHeal(int client, int target, float& duration);
+
+/**
+ * @brief					Post event for survivor healing, use to get the final values after hooks
+ *
+ * @param client			Survivor performing heal
+ * @param target			Survivor being healed
+ * @param duration			Duration of the healing
+ * @remark					L4D AND L4D2
+ *
+ * @noreturn
+ */
+forward void SU_OnHeal_Post(int client, int target, float duration);
