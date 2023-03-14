@@ -64,7 +64,7 @@
 #define DEFAULT_CROUCH_SPEED	75.0
 
 // Max and minimum speeds are applied for legacy kernel, because it works terrible on extreme values
-#define MAX_SPEED				2000.0
+#define MAX_SPEED				650.0
 #define MIN_SPEED				65.0	
 
 #define SPEED_NULL -1	// This is to return an invalid speeds and stop attempting to change player movement speed
