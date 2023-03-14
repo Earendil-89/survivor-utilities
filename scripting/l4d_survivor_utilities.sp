@@ -41,13 +41,12 @@
 #include <sdktools>
 #include <sdkhooks>
 #include <dhooks>
-#undef REQUIRE_PLUGIN
+#undef    REQUIRE_PLUGIN
 #include <left4dhooks>
-#define REQUIRE_PLUGIN
+#define   REQUIRE_PLUGIN
 #include <survivorutilities>
-#include <profiler>
 
-#define PLUGIN_VERSION	"1.5-SNAPSHOT"
+#define PLUGIN_VERSION	"1.5"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -68,7 +67,7 @@
 #define MAX_SPEED				2000.0
 #define MIN_SPEED				65.0	
 
-#define SPEED_NULL -1	// This is to return an invalid speed if the player is incapped or can't move
+#define SPEED_NULL -1	// This is to return an invalid speeds and stop attempting to change player movement speed
 
 // If all works, this will stop being needed
 enum
@@ -283,7 +282,7 @@ public void OnPluginStart()
 	g_hExhaustOverride =	CreateConVar("sm_su_exhaust_override",		"2",		"What should plugin do with exhaust amount if a player is exhausted again=\n0 = Don't override amount.\n1 = Override if new amount is higher.\n2 = Add new amount to the original one.\n3 Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	g_hRecoilScale =		CreateConVar("sm_su_exhaust_recoil_scale",	"1.0",		"Scale the default exhaust recoil by this amount.", FCVAR_NOTIFY, true, 0.0, true, 5.0);
 	// Legacy Kernel
-	g_hLegacyKernel =		CreateConVar("sm_su_legacy_kernel",			"0",		"0 = Use new speed kernel, unlimited speeds, less bugs.\n1 = Use legacy (old) speed kernel: Less conflict with other plugins that may modify speeds by their own.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hLegacyKernel =		CreateConVar("sm_su_legacy_kernel",			"0",		"0 = Use new speed kernel.\n1 = Use legacy (old) speed kernel.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	// Get server ConVars
 	g_hTempDecay =	 	FindConVar("pain_pills_decay_rate");
 	g_hLimpHealth =		FindConVar("survivor_limp_health");
@@ -318,6 +317,7 @@ public void OnPluginStart()
 	HookEvent("weapon_fire",			Event_Weapon_Fire);
 	HookEvent("player_bot_replace",		Event_Player_Replaced); // Bot replaced a player
 	HookEvent("bot_player_replace",		Event_Bot_Replaced);	// Player gets back the control of the character
+
 	if( g_bL4D2 )
 		HookEvent("adrenaline_used",		Event_Adren_Used);
 	
@@ -402,6 +402,17 @@ public void OnMapEnd()
 	}
 }
 
+public void OnPluginEnd()
+{
+	if( g_bLegacyKernel )
+		return;
+		
+	for( int i = 0; i <= MaxClients; i++ )
+	{
+		if( IsValidAliveSurvivor(i) )
+			SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
+	}
+}
 /* ========================================================================================== *
  *                                         ConVars                                            *
  * ========================================================================================== */
@@ -453,7 +464,7 @@ void KernelConVar()
 			if( g_hLegacyKernel.BoolValue == true )	// Attempt to load legacy kernel without Left 4 DHooks
 			{
 				// Print warning and reset 
-				LogMessage("Warning: Left 4 DHooks is not installed, Survivor Utilities Legacy Kernel is disabled.");
+				LogMessage("Warning: Left 4 DHooks is not installed, legacy speed kernel is disabled.");
 				g_hLegacyKernel.SetBool(false, .notify = false);
 				g_bLegacyKernel = false;
 			}
@@ -469,8 +480,11 @@ void KernelConVar()
 			{
 				if( !IsClientInGame(i) ) continue;
 				
-				SDKUnhook(i, SDKHook_PostThink, PostThink);
-				SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
+				SDKUnhook(i, SDKHook_PreThinkPost, PreThinkPost);
+				g_iLastRestrSpeed[i] = SPEED_NULL;
+				
+				if( IsAliveSurvivor(i) )
+					SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
 			}
 		}
 		else
@@ -478,7 +492,7 @@ void KernelConVar()
 			for( int i = 1; i <= MaxClients; i++ )
 			{
 				if( IsValidAliveSurvivor(i) )
-					SDKHook(i, SDKHook_PostThink, PostThink);
+					SDKHook(i, SDKHook_PreThinkPost, PreThinkPost);
 			}
 		}
 	}
@@ -516,7 +530,7 @@ void Event_Player_Spawn(Event event, const char[] name, bool dontBroadcast)
 	if( GetClientTeam(client) != 2 )
 		return;
 
-	SDKHook(client, SDKHook_PostThink, PostThink);
+	SDKHook(client, SDKHook_PreThinkPost, PreThinkPost);
 }
 
 void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
@@ -533,7 +547,10 @@ void Event_Player_Death(Event event, const char[] name, bool dontBroadcast)
 		
 	SetClientData(client, false); // Removes all effects without calling API events, keep player speeds
 	if( !g_bLegacyKernel && GetClientTeam(client) == 2 )
-		SDKUnhook(client, SDKHook_PostThink, PostThink);
+	{
+		SDKUnhook(client, SDKHook_PreThinkPost, PreThinkPost);
+		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+	}
 }
 
 void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
@@ -544,7 +561,7 @@ void Event_Round_Start(Event event, const char[] name, bool dontBroadcast)
 		{
 			SetClientData(i, true); // Reset ALL data, even speeds on round start
 			if( GetClientTeam(i) == 2 )
-				SDKHook(i, SDKHook_PostThink, PostThink);
+				SDKHook(i, SDKHook_PreThinkPost, PreThinkPost);
 		}
 	}
 }
@@ -595,7 +612,10 @@ void Event_Player_Replaced(Event event, const char[] name, bool dontBroadcast)
 	if( SU_IsExhausted(client) )	delete g_hExhaustTimer[client];
 	
 	if( !g_bLegacyKernel )
-		SDKUnhook(client, SDKHook_PostThink, PostThink);
+	{
+		SDKUnhook(client, SDKHook_PreThinkPost, PreThinkPost);
+		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
+	}
 }
 
 // Survivor tries to get back the control of the character, return paused conditions
@@ -625,7 +645,7 @@ void Event_Bot_Replaced(Event event, const char[] name, bool dontBroadcast)
 		g_hExhaustTimer[client] = CreateTimer(0.2, Exhaust_Timer, client);
 	}
 	if( !g_bLegacyKernel )
-		SDKHook(client, SDKHook_PostThink, PostThink);
+		SDKHook(client, SDKHook_PreThinkPost, PreThinkPost);
 	g_fSaveFreeze[client] = 0.0;
 }
 
@@ -938,7 +958,7 @@ Action OnWeaponSwitch(int client, int weapon)
 }
 
 // Here is the new Kernel
-void PostThink(int client)	// PostThink seems to work fine
+void PreThinkPost(int client)
 {
 	/// Fix movement speed bug when jumping or staggering (By Silvers)
 	if( GetEntPropEnt(client, Prop_Send, "m_hGroundEntity") == -1 || GetEntPropFloat(client, Prop_Send, "m_staggerTimer", 1) > -1.0 )
@@ -956,7 +976,7 @@ void PostThink(int client)	// PostThink seems to work fine
 
 			TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vVec);
 		}
-		if( g_iLastRestrSpeed[client] != SPEED_NULL ) // Because it was asigned previously to null
+		if( g_iLastRestrSpeed[client] != SPEED_NULL ) // In case it was previously null, skip this
 		{
 			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);
 			g_iLastRestrSpeed[client] = SPEED_NULL;
@@ -976,6 +996,7 @@ void PostThink(int client)	// PostThink seems to work fine
 	if( iCurRestrictiveSpeed == g_iLastRestrSpeed[client] )
 		return;
 			
+	PrintToChat(client, "SpeedType: %d", iCurRestrictiveSpeed);
 	switch( iCurRestrictiveSpeed )
 	{
 		case SPEED_NULL:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);	// Because survivor speed shouldn't be changed
@@ -1256,9 +1277,9 @@ void BlockPlayerAttacks(int client, const bool isBlock)
 	SetEntPropFloat(iWeapon, Prop_Send, "m_flNextSecondaryAttack", fTime);	
 }
 
-//==========================================================================================
-//									Timers & Request Frames
-//==========================================================================================
+/* ========================================================================================== *
+ *                                      Timers & Request Frames                               *
+ * ========================================================================================== */
 
 // Those timers will call themselves instead of using TIMER_REPEAT flag. This will allow to change damage tick speed if server ConVar changes
 Action ToxicDmg_Timer(Handle timer, int client)
@@ -1384,9 +1405,9 @@ void WeaponFire_Frame(int client)
 	SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", vForce);
 }
 
-// ====================================================================================================
-//										POST PROCESS By Silvers
-// ====================================================================================================
+/* ==================================================================================================== *
+ *                                        POST PROCESS By Silvers                                       *
+ * ==================================================================================================== */
 
 void CreatePostProcess()
 {
@@ -1502,9 +1523,9 @@ bool IsValidEntRef(int entity)
 	return false;
 }
 
-//==========================================================================================
-//									Natives & Forwards
-//==========================================================================================
+/* ========================================================================================== *
+ *                                     Natives & Forwards                                     *
+ * ========================================================================================== */
 
 int Native_AddFreeze(Handle plugin, int numParams)
 {
@@ -1918,9 +1939,16 @@ int Native_GetExhaust(Handle plugin, int numParams)
 	return g_iExhaustToken[client] > 0 ? true : false;
 }
 
-/*============================================================================================
-									Changelog
-----------------------------------------------------------------------------------------------
+/* ============================================================================================
+ *                                             Changelog
+ * --------------------------------------------------------------------------------------------
+ 
+* 1.5    (14-Mar-2023)
+	- Left 4 DHooks dependency is now optional.
+	- Added a new system/kernel to change survivor speeds.
+	- Improved overall speed calculation performance.
+	- Removed unused dependences.
+	- Removed speed ConVar limits, now speed settings are completely free with the new speed kernel.
 * 1.4    (23-Sep-2022)
 	- Added Post forwards for plugin events.
 	- Fixed missing natives in L4D.
@@ -1974,4 +2002,4 @@ int Native_GetExhaust(Handle plugin, int numParams)
     - Fixed missing config file.
 * 1.0    (25-Dec-2021)
     - Initial release.
-============================================================================================*/
+============================================================================================ */
