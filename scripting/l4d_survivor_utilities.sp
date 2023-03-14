@@ -8,7 +8,7 @@
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
- *  CopyRight (C) 2022 Eduardo "Eärendil" Chueca                                    *
+ *  CopyRight (C) 2023 Eduardo "Eärendil" Chueca                                    *
  * -------------------------------------------------------------------------------- *
  *  This program is free software; you can redistribute it and/or modify it under   *
  *  the terms of the GNU General Public License, version 3.0, as published by the   *
@@ -79,19 +79,19 @@ enum
 	STATUS_ADRENALINE
 };
 
-static char g_sWeaponRecoils[][] = {	"shotgun",	"hunting",	"sniper",	"smg",	"magnum",	"pistol",	"ak47",	"desert",	"m60",	"rifle" };
-static float g_fWeaponRecoils[]= {		18.5, 		14.5, 		14.5,		3.0,	7.5,		2.5,		4.2,	3.2,		4.5,	4.0 };
+static char g_sWeaponRecoils[][] = { "shotgun",	"hunting", "sniper", "smg", "magnum", "pistol", "ak47", "desert", "m60", "rifle" };
+static float g_fWeaponRecoils[]= { 18.5, 14.5, 14.5, 3.0, 7.5, 2.5, 4.2, 3.2, 4.5, 4.0 };
 
 // Player Absolute Speeds
-float g_fAbsRunSpeed[MAXPLAYERS+1];		// Normal player speed (default = 220.0)
+float g_fAbsRunSpeed[MAXPLAYERS+1];			// Normal player speed (default = 220.0)
 float g_fAbsWaterSpeed[MAXPLAYERS+1];		// Player speed on water (default = 115.0)
 float g_fAbsLimpSpeed[MAXPLAYERS+1];		// Player speed while limping (default = 150.0)
 float g_fAbsCritSpeed[MAXPLAYERS+1];		// Player speed when 1 HP after 1 incapacitation (default = 85.0)
 float g_fAbsWalkSpeed[MAXPLAYERS+1];		// Player speed while walking (default = 85.0)
 float g_fAbsCrouchSpeed[MAXPLAYERS+1];		// Player speed while crouching (default = 75.0)
-float g_fAbsExhaustSpeed[MAXPLAYERS+1];	// Player speed while exhaust
+float g_fAbsExhaustSpeed[MAXPLAYERS+1];		// Player speed while exhaust
 float g_fAbsScopeSpeed[MAXPLAYERS+1];		// Player speed while looking through a sniper scope
-float g_fAbsAdrenSpeed[MAXPLAYERS+1];	// Player speed when running under adrenaline effect
+float g_fAbsAdrenSpeed[MAXPLAYERS+1];		// Player speed when running under adrenaline effect
 
 // Player relative speeds, store also those variables for faster speed access to avoid unnecesary calculations with the new kernel
 int g_iLastRestrSpeed[MAXPLAYERS+1] = { SPEED_NULL, ...};	// This will prevent to call speed changes if not necessary in new kernel
@@ -1060,7 +1060,7 @@ void ScreenColor(int client, int color[4], int flags)
  * in the case is under adrenaline effect it will do the oposite and will apply the fastest speed possible based on logic
  * it works assuming that injuries, water or exhaustion will only decrease movement speed, if they are set faster than normal speeds they won't boost players
  */
-int GetMostRestrictiveSpeed(int client, int speedType)	// moveType -> speed of the survivor that depends of what the player is doing
+int GetMostRestrictiveSpeed(int client, int speedType)	// speedType -> speed of the survivor that depends of what the player is doing
 {
 	// Ignore dead or incap players to avoid innecesary function calls
 	if( GetEntProp(client, Prop_Send, "m_isIncapacitated") )
