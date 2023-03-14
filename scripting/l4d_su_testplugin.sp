@@ -13,7 +13,7 @@
 #include <sourcemod>
 #include <survivorutilities>
 
-#define PLUGIN_VERSION "1.2.1"
+#define PLUGIN_VERSION "1.2.2"
 #define DEBUG 1
 
 public Plugin myinfo =
@@ -200,6 +200,7 @@ public Action ADM_Speed(int client, int args)
 	if( StrEqual(arg2, "critical", false) || StrEqual(arg2, "crit", false) ) iSpeedType = SPEED_CRITICAL;
 	if( StrEqual(arg2, "water", false) ) iSpeedType = SPEED_WATER;
 	if( StrEqual(arg2, "exhaust", false) ) iSpeedType = SPEED_EXHAUST;
+	if( StrEqual(arg2, "scope", false) ) iSpeedType = SPEED_SCOPE;
 	for( int i = 0; i < target_count; i++ )
 	{
 		if( GetClientTeam(target_list[i]) != 2 ) return Plugin_Handled;
