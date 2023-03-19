@@ -4,7 +4,7 @@
  * -------------------------------------------------------------------------------- *
  *  Author      :   Eärendil                                                        *
  *  Descrp      :   Modify survivor speeds and add custom effects.                  *
- *  Version     :   1.5                                                             *
+ *  Version     :   1.5.1                                                           *
  *  Link        :   https://forums.alliedmods.net/showthread.php?t=335683           *
  * ================================================================================ *
  *                                                                                  *
@@ -996,7 +996,6 @@ void PreThinkPost(int client)
 	if( iCurRestrictiveSpeed == g_iLastRestrSpeed[client] )
 		return;
 			
-	PrintToChat(client, "SpeedType: %d", iCurRestrictiveSpeed);
 	switch( iCurRestrictiveSpeed )
 	{
 		case SPEED_NULL:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);	// Because survivor speed shouldn't be changed
@@ -1942,18 +1941,19 @@ int Native_GetExhaust(Handle plugin, int numParams)
 /* ============================================================================================
  *                                             Changelog
  * --------------------------------------------------------------------------------------------
- 
+* 1.5.1  (19-Mar-2023)
+    - Remove developement messages.
 * 1.5    (14-Mar-2023)
-	- Left 4 DHooks dependency is now optional.
-	- Added a new system/kernel to change survivor speeds.
-	- Improved overall speed calculation performance.
-	- Removed unused dependences.
-	- Removed speed ConVar limits, now speed settings are completely free with the new speed kernel.
+    - Left 4 DHooks dependency is now optional.
+    - Added a new system/kernel to change survivor speeds.
+    - Improved overall speed calculation performance.
+    - Removed unused dependences.
+    - Removed speed ConVar limits, now speed settings are completely free with the new speed kernel.
 * 1.4    (23-Sep-2022)
-	- Added Post forwards for plugin events.
-	- Fixed missing natives in L4D.
+    - Added Post forwards for plugin events.
+    - Fixed missing natives in L4D.
 * 1.3.5  (08-Sep-2022)
-	- Fixed error when attempting to check adrenaline in L4D games (thanks to Dominatez for reporting).
+    - Fixed error when attempting to check adrenaline in L4D games (thanks to Dominatez for reporting).
 * 1.3.4  (28-Jun-2022)
     - Fixed errors when zombie control transferred between bots and players in infected team.
 * 1.3.3  (22-Jun-2022)
