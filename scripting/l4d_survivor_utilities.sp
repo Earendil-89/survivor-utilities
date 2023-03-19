@@ -46,7 +46,7 @@
 #define   REQUIRE_PLUGIN
 #include <survivorutilities>
 
-#define PLUGIN_VERSION	"1.5"
+#define PLUGIN_VERSION	"1.5.1"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"

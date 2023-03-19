@@ -25,7 +25,7 @@ bool g_bL4D2;
 
 public Plugin myinfo =
 {
-	name = "[L4D & L4D2] Surivor utilities: Notifications",	// Title pending of changes, I haven't found an appropiate name for this
+	name = "[L4D & L4D2] Surivor utilities: Notifications",
 	author = "Eärendil",
 	description = "Adds chat notifications to players when they have a change in their condition",
 	version = PLUGIN_VERSION,
