@@ -189,16 +189,6 @@ native bool SU_IsExhausted(int client);
  */
 native float SU_GetSpeed(int client, int speedType);
 
-/**
- * @brief Returns player speed scale as a multiplier of the default survivor speed
- *
- * @param client            Client to check
- * @param speedType         Type of speed to check. Valid values: SPEED_RUN, SPEED_WALK, SPEED_CROUCH, SPEED_LIMP, SPEED_CRITICAL, SPEED_WATER, SPEED_EXHAUST
- *
- * @return                  Current survivor speed multiplier
- */
-native float SU_GetSpeedMultiplier(int client, int speedType);
-
 /*==========================================================================
                             GlobalForwards                                      
 ----------------------------------------------------------------------------
