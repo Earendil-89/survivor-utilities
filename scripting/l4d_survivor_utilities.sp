@@ -46,7 +46,7 @@
 #define   REQUIRE_PLUGIN
 #include <survivorutilities>
 
-#define PLUGIN_VERSION	"1.5.1"
+#define PLUGIN_VERSION	"1.5.2-SNAPSHOT"
 #define GAMEDATA		"l4d_survivor_utilities"
 
 #define SND_BLEED1		"player/survivor/splat/blood_spurt1.wav"
@@ -146,6 +146,8 @@ ConVar g_hRecoilScale;
 ConVar g_hScopeSpeed;
 ConVar g_hAdrenSpeedBost;
 ConVar g_hLegacyKernel;
+ConVar g_hFreezeSpeed;
+ConVar g_hFreezeShoot;
 
 GlobalForward gf_Freeze;
 GlobalForward gf_Bleed;
@@ -171,6 +173,7 @@ bool g_bL4D2;
 // I use here variables to store ConVars that can be requested every frame
 float g_fTempDecay;
 float g_fLimpHealth;
+float g_fFreezeSpeed;
 int g_iMaxHealth;
 // Temporary stores original ConVar when is modified to change per-player heal and revive speeds
 float g_fHealDuration;
@@ -278,6 +281,8 @@ public void OnPluginStart()
 	g_hBleedOverride =		CreateConVar("sm_su_bleed_override",		"2",		"What should plugin do with bleed amount if a player is bleeding again?\n0 = Don't override amount.\n1 = Override if new amount is higher. \n2 = Add new amount to the original one.\n3 = Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	// Freeze ConVars
 	g_hFreezeOverride =		CreateConVar("sm_su_freeze_override",		"2",		"What should plugin do with freeze time if a player is frozen again?\n0 = Don't override original freeze time.\n1 = Override original freeze time if new time is higher.\n2 = Add the new freeze time to the original time.\n3 = Override original time.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
+	g_hFreezeSpeed =		CreateConVar("sm_su_freeze_movespeed",		"0.0",		"Scale survivor movement speed by this value when frozen.\n0 = Disable movement. 1= Don't modify movement speed.\nWARNING: With legacy kernel this will only accept 0 (don't move) or 1 normal movement.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	g_hFreezeShoot =		CreateConVar("sm_su_freeze_allowattack",	"0",		"Allow survivor to attack or melee under freeze effect.\n0 = Block attacks. 1 = allow.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	//Exhaust ConVars
 	g_hExhaustOverride =	CreateConVar("sm_su_exhaust_override",		"2",		"What should plugin do with exhaust amount if a player is exhausted again=\n0 = Don't override amount.\n1 = Override if new amount is higher.\n2 = Add new amount to the original one.\n3 Allways override amount.", FCVAR_NOTIFY, true, 0.0, true, 3.0);
 	g_hRecoilScale =		CreateConVar("sm_su_exhaust_recoil_scale",	"1.0",		"Scale the default exhaust recoil by this amount.", FCVAR_NOTIFY, true, 0.0, true, 5.0);
@@ -303,6 +308,7 @@ public void OnPluginStart()
 	g_hCrouchSpeed.AddChangeHook(CVarChange_Speeds);
 	g_hScopeSpeed.AddChangeHook(CVarChange_Speeds);
 	g_hAdrenSpeed.AddChangeHook(CVarChange_Speeds);
+	g_hFreezeSpeed.AddChangeHook(CVarChange_Speeds);
 	
 	g_hTempDecay.AddChangeHook(CVarChange_Game);
 	g_hLimpHealth.AddChangeHook(CVarChange_Game);
@@ -378,6 +384,7 @@ public void OnConfigsExecuted()
 public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3], float angles[3], int& weapon, int& subtype, int& cmdnum, int& tickcount, int& seed, int mouse[2])
 {
 	if( !IsAliveSurvivor(client) ) return Plugin_Continue;
+	if( !g_hFreezeShoot ) return Plugin_Continue;
 	
 	if( g_bIsFrozen[client] == true && buttons & IN_RELOAD )
 	{
@@ -434,7 +441,10 @@ void CVarChange_Kernel(Handle convar, const char[] oldvalue, const char[] newVal
 
 void SetSpeeds()	// I need to change this to prevent override custom player speeds when convar changes
 {	
-	// Only change absolute speeds, because relative speeds are a multipler that is preserver between mapchanges
+	if( g_hLegacyKernel )
+		g_fFreezeSpeed = g_hFreezeSpeed.FloatValue == 0.0 ? 0.0 : 1.0;
+
+	// Only change absolute speeds, because relative speeds are a multipler that is preserved between mapchanges
 	for( int i = 1; i <= MaxClients; i++ )
 	{
 		g_fAbsRunSpeed[i] = g_hRunSpeed.FloatValue * g_fRelRunSpeed[i]; // So if player speed is 1.5 after convar change his speed will scale
@@ -445,6 +455,14 @@ void SetSpeeds()	// I need to change this to prevent override custom player spee
 		g_fAbsCrouchSpeed[i] = g_hCrouchSpeed.FloatValue * g_fRelCrouchSpeed[i];
 		g_fAbsScopeSpeed[i] = g_hScopeSpeed.FloatValue * g_fRelScopeSpeed[i];
 		g_fAbsAdrenSpeed[i] = g_hAdrenSpeed.FloatValue * g_fRelAdrenSpeed[i];
+
+		if( g_bIsFrozen[i] )
+		{
+			if( g_fFreezeSpeed == 0.0 )
+				SetEntityMoveType(i, MOVETYPE_NONE);
+			else
+				SetEntityMoveType(i, MOVETYPE_WALK);
+		}
 	}
 }
 
@@ -467,6 +485,7 @@ void KernelConVar()
 				LogMessage("Warning: Left 4 DHooks is not installed, legacy speed kernel is disabled.");
 				g_hLegacyKernel.SetBool(false, .notify = false);
 				g_bLegacyKernel = false;
+				g_fFreezeSpeed = g_hFreezeSpeed.FloatValue;
 			}
 		}
 	}
@@ -486,9 +505,11 @@ void KernelConVar()
 				if( IsAliveSurvivor(i) )
 					SetEntPropFloat(i, Prop_Send, "m_flLaggedMovementValue", 1.0);
 			}
+			if( g_fFreezeSpeed < 1.0 ) g_fFreezeSpeed = 0.0;	// Force speed to 0, ignore scaling
 		}
 		else
 		{
+			g_fFreezeSpeed = g_hFreezeSpeed.FloatValue;
 			for( int i = 1; i <= MaxClients; i++ )
 			{
 				if( IsValidAliveSurvivor(i) )
@@ -995,19 +1016,23 @@ void PreThinkPost(int client)
 	// Since there is no change on player speed not need to change the speed multiplier
 	if( iCurRestrictiveSpeed == g_iLastRestrSpeed[client] )
 		return;
-			
+
+	float fFreezeScale = 1.0;	
+	if( g_bIsFrozen[client] && g_fFreezeSpeed < 1.0 && g_fFreezeSpeed > 0.0 )
+		fFreezeScale = g_fFreezeSpeed;
+
 	switch( iCurRestrictiveSpeed )
 	{
 		case SPEED_NULL:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", 1.0);	// Because survivor speed shouldn't be changed
-		case SPEED_RUN:			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelRunSpeed[client]);
-		case SPEED_WALK:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelWalkSpeed[client]);
-		case SPEED_CROUCH:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelCrouchSpeed[client]);
-		case SPEED_LIMP:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelLimpSpeed[client]);
-		case SPEED_CRITICAL:	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelCritSpeed[client]);
-		case SPEED_WATER:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelWaterSpeed[client]);
-		case SPEED_EXHAUST:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelExhaustSpeed[client]);
-		case SPEED_ADRENALINE:	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelAdrenSpeed[client]);
-		case SPEED_SCOPE:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelScopeSpeed[client]);
+		case SPEED_RUN:			SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelRunSpeed[client] * fFreezeScale);
+		case SPEED_WALK:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelWalkSpeed[client] * fFreezeScale);
+		case SPEED_CROUCH:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelCrouchSpeed[client] * fFreezeScale);
+		case SPEED_LIMP:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelLimpSpeed[client] * fFreezeScale);
+		case SPEED_CRITICAL:	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelCritSpeed[client] * fFreezeScale);
+		case SPEED_WATER:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelWaterSpeed[client] * fFreezeScale);
+		case SPEED_EXHAUST:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelExhaustSpeed[client] * fFreezeScale);
+		case SPEED_ADRENALINE:	SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelAdrenSpeed[client] * fFreezeScale);
+		case SPEED_SCOPE:		SetEntPropFloat(client, Prop_Send, "m_flLaggedMovementValue", g_fRelScopeSpeed[client] * fFreezeScale);
 	}
 	g_iLastRestrSpeed[client] = iCurRestrictiveSpeed;	// Assing the new restrictive speed to ignore in future checks without changes
 
@@ -1569,9 +1594,17 @@ int Native_AddFreeze(Handle plugin, int numParams)
 		g_bIsFrozen[client] = true;
 		EmitSoundToClient(client, SND_FREEZE);
 		ScreenColor(client, { 0, 61, 255, 67 }, (0x0002 | 0x0008 | 0x0010));
-		SetEntityMoveType(client, MOVETYPE_NONE);
-		SDKHook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch);
-		BlockPlayerAttacks(client, true);
+		if( g_fFreezeSpeed == 0.0 )
+			SetEntityMoveType(client, MOVETYPE_NONE);
+		else
+			g_iLastRestrSpeed[client] = SPEED_NULL;
+		
+		if( !g_hFreezeShoot.BoolValue )
+		{
+			SDKHook(client, SDKHook_WeaponSwitchPost, OnWeaponSwitch);
+			BlockPlayerAttacks(client, true);
+		}
+
 	}
 
 	delete g_hFreezeTimer[client];
@@ -1941,6 +1974,9 @@ int Native_GetExhaust(Handle plugin, int numParams)
 /* ============================================================================================
  *                                             Changelog
  * --------------------------------------------------------------------------------------------
+* 1.5.2   (20-Apr-2023)
+	- Freeze effect attack block can be enable/disable via ConVar.
+	- Player movement speed can be scaled with new Kernel via ConVar.
 * 1.5.1  (19-Mar-2023)
     - Remove developement messages.
 * 1.5    (14-Mar-2023)
